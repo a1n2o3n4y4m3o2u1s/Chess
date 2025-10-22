@@ -32,8 +32,27 @@ int rightColorMoving (char board[8][8], int startRow, int startCol, int whiteToM
     }
 }
 
+int noSelfTake (char board[8][8], int endRow, int endCol, int whiteToMove) {
+    char targetPiece = board[endRow][endCol];
+    if (whiteToMove == 1) {
+        if (strchr("PRNBQK", targetPiece)) {
+            printf("You can't take your own piece\n");
+            return 0;
+        } else {
+            return 1;
+        }
+    } else {
+        if (strchr("prnbqk", targetPiece)) {
+            printf("You can't take your own piece\n");
+            return 0;
+        } else {
+            return 1;
+        }
+    }
+}
+
 int isLegalMove(char board[8][8], int startRow, int startCol, int endRow, int endCol, int whiteToMove) {
-    if (rightColorMoving(board, startRow, startCol, whiteToMove)) {
+    if (rightColorMoving(board, startRow, startCol, whiteToMove) && noSelfTake(board, endRow, endCol, whiteToMove)) {
         return 1;
     } else {
         return 0;
