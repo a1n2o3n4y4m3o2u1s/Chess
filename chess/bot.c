@@ -16,6 +16,10 @@ void setBotDepth(int depth) {
 // BOARD EVALUATION
 // ============================================================================
 
+// ============================================================================
+// BOARD EVALUATION - IMPROVED VERSION
+// ============================================================================
+
 static int evaluatePosition(char board[8][8]) {
     int score = 0;
     
@@ -28,16 +32,162 @@ static int evaluatePosition(char board[8][8]) {
     pieceValues['Q'] = 900;   pieceValues['q'] = 900;
     pieceValues['K'] = 20000; pieceValues['k'] = 20000;
     
+    // Pawn structure bonuses (middle game)
+    static const int pawnTable[8][8] = {
+        { 0,  0,  0,  0,  0,  0,  0,  0},
+        {50, 50, 50, 50, 50, 50, 50, 50},
+        {10, 10, 20, 30, 30, 20, 10, 10},
+        { 5,  5, 10, 25, 25, 10,  5,  5},
+        { 0,  0,  0, 20, 20,  0,  0,  0},
+        { 5, -5,-10,  0,  0,-10, -5,  5},
+        { 5, 10, 10,-20,-20, 10, 10,  5},
+        { 0,  0,  0,  0,  0,  0,  0,  0}
+    };
+    
+    // Knight position bonuses
+    static const int knightTable[8][8] = {
+        {-50,-40,-30,-30,-30,-30,-40,-50},
+        {-40,-20,  0,  0,  0,  0,-20,-40},
+        {-30,  0, 10, 15, 15, 10,  0,-30},
+        {-30,  5, 15, 20, 20, 15,  5,-30},
+        {-30,  0, 15, 20, 20, 15,  0,-30},
+        {-30,  5, 10, 15, 15, 10,  5,-30},
+        {-40,-20,  0,  5,  5,  0,-20,-40},
+        {-50,-40,-30,-30,-30,-30,-40,-50}
+    };
+    
+    // Bishop position bonuses
+    static const int bishopTable[8][8] = {
+        {-20,-10,-10,-10,-10,-10,-10,-20},
+        {-10,  0,  0,  0,  0,  0,  0,-10},
+        {-10,  0,  5, 10, 10,  5,  0,-10},
+        {-10,  5,  5, 10, 10,  5,  5,-10},
+        {-10,  0, 10, 10, 10, 10,  0,-10},
+        {-10, 10, 10, 10, 10, 10, 10,-10},
+        {-10,  5,  0,  0,  0,  0,  5,-10},
+        {-20,-10,-10,-10,-10,-10,-10,-20}
+    };
+    
+    // King safety (middle game)
+    static const int kingTable[8][8] = {
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-30,-40,-40,-50,-50,-40,-40,-30},
+        {-20,-30,-30,-40,-40,-30,-30,-20},
+        {-10,-20,-20,-20,-20,-20,-20,-10},
+        { 20, 20,  0,  0,  0,  0, 20, 20},
+        { 20, 30, 10,  0,  0, 10, 30, 20}
+    };
+    
+    // Count pieces for game phase detection
+    int whiteMinorCount = 0, blackMinorCount = 0;
+    int whiteMajorCount = 0, blackMajorCount = 0;
+    
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
             char piece = board[row][col];
             if (isEmpty(piece)) continue;
             
             int value = pieceValues[(int)piece];
+            int positionalBonus = 0;
+            
+            // Add positional bonuses based on piece type and square
             if (isWhitePiece(piece)) {
                 score += value;
+                
+                // Piece-square tables (flipped for white - they move upward)
+                int flippedRow = 7 - row;  // Flip for white perspective
+                
+                switch (toupper(piece)) {
+                    case 'P': 
+                        positionalBonus = pawnTable[flippedRow][col];
+                        break;
+                    case 'N':
+                        positionalBonus = knightTable[flippedRow][col];
+                        whiteMinorCount++;
+                        break;
+                    case 'B':
+                        positionalBonus = bishopTable[flippedRow][col];
+                        whiteMinorCount++;
+                        break;
+                    case 'R':
+                        positionalBonus = (flippedRow == 7) ? 10 : 0; // Rook on 7th rank
+                        whiteMajorCount++;
+                        break;
+                    case 'Q':
+                        whiteMajorCount++;
+                        break;
+                    case 'K':
+                        // Use king safety table in middle game, encourage castling
+                        if (whiteMinorCount + whiteMajorCount > 6) { // Middle game
+                            positionalBonus = kingTable[flippedRow][col];
+                        } else { // Endgame - centralize king
+                            positionalBonus = -abs(col - 3) - abs(flippedRow - 3);
+                        }
+                        break;
+                }
+                score += positionalBonus;
+                
             } else {
                 score -= value;
+                
+                // Piece-square tables (from black's perspective - they move downward)
+                switch (toupper(piece)) {
+                    case 'P': 
+                        positionalBonus = pawnTable[row][col];
+                        break;
+                    case 'N':
+                        positionalBonus = knightTable[row][col];
+                        blackMinorCount++;
+                        break;
+                    case 'B':
+                        positionalBonus = bishopTable[row][col];
+                        blackMinorCount++;
+                        break;
+                    case 'R':
+                        positionalBonus = (row == 0) ? 10 : 0; // Rook on 7th rank (row 0 for black)
+                        blackMajorCount++;
+                        break;
+                    case 'Q':
+                        blackMajorCount++;
+                        break;
+                    case 'K':
+                        if (blackMinorCount + blackMajorCount > 6) { // Middle game
+                            positionalBonus = kingTable[row][col];
+                        } else { // Endgame - centralize king
+                            positionalBonus = -abs(col - 3) - abs(row - 3);
+                        }
+                        break;
+                }
+                score -= positionalBonus;
+            }
+            
+            // Bonus for bishop pair
+            if (toupper(piece) == 'B') {
+                int bishopCount = 0;
+                for (int r = 0; r < 8; r++) {
+                    for (int c = 0; c < 8; c++) {
+                        char p = board[r][c];
+                        if (isWhitePiece(piece) && p == 'B') bishopCount++;
+                        if (!isWhitePiece(piece) && p == 'b') bishopCount++;
+                    }
+                }
+                if (bishopCount >= 2) {
+                    if (isWhitePiece(piece)) score += 25; // Bishop pair bonus
+                    else score -= 25;
+                }
+            }
+        }
+    }
+    
+    // Bonus for controlling center squares
+    for (int row = 3; row <= 4; row++) {
+        for (int col = 3; col <= 4; col++) {
+            char piece = board[row][col];
+            if (!isEmpty(piece)) {
+                if (isWhitePiece(piece)) score += 5;
+                else score -= 5;
             }
         }
     }
