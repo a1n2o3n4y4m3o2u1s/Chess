@@ -33,6 +33,69 @@ void setBotDepth(int depth) {
 }
 
 // ============================================================================
+// PROMOTION HANDLING
+// ============================================================================
+
+// Choose the best promotion piece based on position evaluation
+char chooseBestPromotionPiece(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, 
+                             int startRow, int startCol, int endRow, int endCol, 
+                             int whiteToMove, clock_t startTime) {
+    char piece = board[startRow][startCol];
+    int isWhite = isWhitePiece(piece);
+    
+    // Default to queen (strongest piece)
+    char bestPromotion = 'Q';
+    int bestScore = isWhite ? INITIAL_ALPHA : INITIAL_BETA;
+    
+    // Test all promotion options
+    char promotionPieces[] = {'Q', 'R', 'B', 'N'};
+    int numOptions = 4;
+    
+    for (int i = 0; i < numOptions; i++) {
+        // Create a temporary move with this promotion
+        Move testMove = {startRow, startCol, endRow, endCol, promotionPieces[i]};
+        
+        char savedStart, savedEnd, savedCaptured;
+        int wasEnPassant;
+        GameState savedState = *state;
+        int nodesEvaluated = 0;
+        
+        // Make the promotion move
+        makeMove(board, &testMove, &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
+        
+        // Evaluate the resulting position
+        int score = evaluatePosition(board);
+        
+        // Add a small bonus for queen (usually best) and knight (in some endgames)
+        if (promotionPieces[i] == 'Q') {
+            score += isWhite ? 50 : -50;  // Small bonus for queen
+        } else if (promotionPieces[i] == 'N') {
+            // Knight can be better in some closed positions or for fork opportunities
+            score += isWhite ? 10 : -10;
+        }
+        
+        // Unmake the move
+        unmakeMove(board, &testMove, savedStart, savedEnd, savedCaptured, wasEnPassant, state);
+        *state = savedState;
+        
+        // Update best promotion
+        if ((isWhite && score > bestScore) || (!isWhite && score < bestScore)) {
+            bestScore = score;
+            bestPromotion = promotionPieces[i];
+        }
+        
+        // Check time limit
+        double elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
+        if (elapsed >= BOT_TIME_LIMIT_SECONDS * 0.1) {  // Don't spend too much time on promotion
+            break;
+        }
+    }
+    
+    printf("Selected promotion: %c\n", bestPromotion);
+    return bestPromotion;
+}
+
+// ============================================================================
 // ITERATIVE DEEPENING + BOT MOVE SELECTION
 // ============================================================================
 
@@ -52,6 +115,13 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
             *startCol = moves[0].startCol;
             *endRow = moves[0].endRow;
             *endCol = moves[0].endCol;
+            
+            // Handle promotion for fallback move
+            char piece = board[*startRow][*startCol];
+            if (toupper(piece) == 'P' && (*endRow == 0 || *endRow == 7)) {
+                // For fallback, just promote to queen
+                printf("Fallback: promoting to queen\n");
+            }
         } else {
             *startRow = -1;
             *startCol = -1;
@@ -87,6 +157,7 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
     printf("\n=== Bot Thinking ===\n");
     printf("Allocated time: %.1f seconds\n", thinkTime);
     printf("Position eval: %d\n", currentEval);
+    printf("Legal moves: %d\n", numMoves);
     
     // Iterative deepening: search depth 1, then 2, then 3, etc.
     for (int currentDepth = 1; currentDepth <= 50; currentDepth++) {
@@ -128,14 +199,14 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
             int wasEnPassant;
             GameState savedState = *state;
             
-            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant);
+            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
             updateEnPassant(state, &moves[i], savedStart);
             unsigned long long newHash = computeHash(board);
             
             int score = minimax(board, state, currentDepth - 1, INITIAL_ALPHA, INITIAL_BETA, 
                                !whiteToMove, &depthNodesEvaluated, newHash, startTime, 1);
             
-            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant);
+            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant, state);
             *state = savedState;
             
             // Update best move for this depth
@@ -165,8 +236,14 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
             lastDepthDuration = (double)(clock() - lastDepthStartTime) / CLOCKS_PER_SEC;
             elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
             
-            printf("Depth %2d: score=%6d, nodes=%8d, time=%.2fs (depth: %.2fs)\n", 
-                   currentDepth, depthBestScore, depthNodesEvaluated, elapsed, lastDepthDuration);
+            // Display promotion info if applicable
+            char promotionInfo[32] = "";
+            if (bestMove.promotionPiece != 0) {
+                snprintf(promotionInfo, sizeof(promotionInfo), " (promote to %c)", bestMove.promotionPiece);
+            }
+            
+            printf("Depth %2d: score=%6d, nodes=%8d, time=%.2fs%s\n", 
+                   currentDepth, depthBestScore, depthNodesEvaluated, elapsed, promotionInfo);
             
             // Early exit if we found a forced mate
             if (whiteToMove && depthBestScore > MATE_SCORE_THRESHOLD) {
@@ -186,15 +263,58 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
     
     totalTime = (double)(clock() - startTime) / CLOCKS_PER_SEC;
     
+    // ============================================================================
+    // PROMOTION HANDLING - CRITICAL SECTION
+    // ============================================================================
+    
+    // If the best move is a pawn promotion, choose the best promotion piece
+    char piece = board[bestMove.startRow][bestMove.startCol];
+    int isPromotion = (toupper(piece) == 'P') && 
+                     ((isWhitePiece(piece) && bestMove.endRow == 0) || 
+                      (!isWhitePiece(piece) && bestMove.endRow == 7));
+    
+    if (isPromotion && bestMove.promotionPiece == 0) {
+        // The search returned a promotion move but didn't specify which piece
+        // We need to choose the best promotion piece
+        printf("Choosing best promotion piece...\n");
+        bestMove.promotionPiece = chooseBestPromotionPiece(board, state, 
+                                                          bestMove.startRow, bestMove.startCol,
+                                                          bestMove.endRow, bestMove.endCol,
+                                                          whiteToMove, startTime);
+    }
+    
+    // ============================================================================
+    // FINAL OUTPUT AND MOVE SELECTION
+    // ============================================================================
+    
     printf("\n=== Search Complete ===\n");
     printf("Maximum depth reached: %d\n", depthReached);
     printf("Total nodes evaluated: %d\n", totalNodesEvaluated);
     printf("Nodes per second: %.0f\n", totalNodesEvaluated / (totalTime > 0 ? totalTime : 0.001));
     printf("Total time: %.2f seconds\n", totalTime);
     printf("Best move score: %d\n", bestScore);
-    printf("Selected move: %c%d -> %c%d\n", 
-           'a' + bestMove.startCol, MAX_BOARD_SIZE - bestMove.startRow,
-           'a' + bestMove.endCol, MAX_BOARD_SIZE - bestMove.endRow);
+    
+    // Display move with promotion info
+    if (bestMove.promotionPiece != 0) {
+        printf("Selected move: %c%d -> %c%d (promote to %c)\n", 
+               'a' + bestMove.startCol, MAX_BOARD_SIZE - bestMove.startRow,
+               'a' + bestMove.endCol, MAX_BOARD_SIZE - bestMove.endRow,
+               bestMove.promotionPiece);
+    } else {
+        printf("Selected move: %c%d -> %c%d\n", 
+               'a' + bestMove.startCol, MAX_BOARD_SIZE - bestMove.startRow,
+               'a' + bestMove.endCol, MAX_BOARD_SIZE - bestMove.endRow);
+    }
+    
+    // Check if it's a castling move
+    if (toupper(piece) == 'K' && abs(bestMove.endCol - bestMove.startCol) == 2) {
+        if (bestMove.endCol > bestMove.startCol) {
+            printf("Castling: kingside\n");
+        } else {
+            printf("Castling: queenside\n");
+        }
+    }
+    
     printf("===================\n\n");
     
     *startRow = bestMove.startRow;
@@ -204,4 +324,14 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
     
     // Free the transposition table before returning
     freeTranspositionTable();
+}
+
+// ============================================================================
+// SIMPLIFIED BOT MOVE FOR COMPATIBILITY
+// ============================================================================
+
+void getBotMove(char board[8][8], int whiteToMove, int* startRow, int* startCol, 
+                int* endRow, int* endCol, GameState* state) {
+    // Use default think time
+    selectBotMove(board, whiteToMove, startRow, startCol, endRow, endCol, state, 5.0, 0);
 }

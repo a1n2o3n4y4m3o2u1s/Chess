@@ -12,11 +12,12 @@
 #define INITIAL_BETA 999999
 #define NODES_BETWEEN_TIME_CHECKS 1000
 
+// UPDATED: Added GameState* parameter to makeMove and unmakeMove
 void makeMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move, char* savedStart, char* savedEnd, 
-              char* savedCaptured, int* wasEnPassant);
+              char* savedCaptured, int* wasEnPassant, GameState* state);
 
 void unmakeMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move, char savedStart, char savedEnd, 
-                char savedCaptured, int wasEnPassant);
+                char savedCaptured, int wasEnPassant, GameState* state);
 
 void updateEnPassant(GameState* state, Move* move, char piece);
 

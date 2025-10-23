@@ -4,6 +4,13 @@
 #include <moves.h>
 #include <board.h> 
 
+#define SCORE_TT_MOVE 1000000
+#define SCORE_CAPTURE_BASE 100000
+#define SCORE_PROMOTION 90000
+#define SCORE_KILLER 10000
+#define SCORE_CASTLING 8000
+#define SCORE_CENTER 100
+
 // Killer moves
 static Move killerMoves[MAX_DEPTH][KILLERS_PER_DEPTH];
 
@@ -50,6 +57,7 @@ int getCaptureValue(char capturedPiece) {
     values['B'] = 3; values['b'] = 3;
     values['R'] = 5; values['r'] = 5;
     values['Q'] = 9; values['q'] = 9;
+    values['K'] = 100; values['k'] = 100;
     
     return values[(int)capturedPiece];
 }
@@ -64,56 +72,75 @@ int scoreMoveForOrdering(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move,
         move->startCol == hashMove->startCol &&
         move->endRow == hashMove->endRow &&
         move->endCol == hashMove->endCol) {
-        return 1000000;
+        return SCORE_TT_MOVE;
     }
     
-    // 2. Captures using MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
+    char movingPiece = board[move->startRow][move->startCol];
     char targetPiece = board[move->endRow][move->endCol];
+    
+    // 2. Captures using MVV-LVA (Most Valuable Victim - Least Valuable Attacker)
     if (!isEmpty(targetPiece)) {
-        char movingPiece = board[move->startRow][move->startCol];
         int victimValue = getCaptureValue(targetPiece);
         int attackerValue = getCaptureValue(movingPiece);
-        score = 100000 + (victimValue * 100) - attackerValue;
+        score = SCORE_CAPTURE_BASE + (victimValue * 100) - attackerValue;
         return score;
     }
     
-    // 3. Killer moves
-    if (isKillerMove(move, depth)) {
-        return 10000;
+    // Quiet moves below
+    
+    // 3. Promotions (assuming to queen, detect by pawn to back rank)
+    // Assuming row 0 is rank 8 (black's back), row 7 is rank 1 (white's back)
+    if ((movingPiece == 'P' && move->endRow == 0) || 
+        (movingPiece == 'p' && move->endRow == MAX_BOARD_SIZE - 1)) {
+        return SCORE_PROMOTION;
     }
     
-    // 4. Center control moves
-    if ((move->endRow >= 3 && move->endRow <= 4) && 
-        (move->endCol >= 3 && move->endCol <= 4)) {
-        score = 100;
+    // 4. Killer moves
+    if (isKillerMove(move, depth)) {
+        return SCORE_KILLER;
+    }
+    
+    // 5. Castling
+    if ((movingPiece == 'K' || movingPiece == 'k') &&
+        abs(move->endCol - move->startCol) == 2 &&
+        move->startRow == move->endRow) {
+        score = SCORE_CASTLING;
+    }
+    
+    // 6. Center control moves
+    int centerStart = (MAX_BOARD_SIZE / 2) - 1;
+    int centerEnd = centerStart + 1;
+    if ((move->endRow >= centerStart && move->endRow <= centerEnd) && 
+        (move->endCol >= centerStart && move->endCol <= centerEnd)) {
+        score += SCORE_CENTER;
     }
     
     return score;
 }
 
+typedef struct {
+    Move move;
+    int score;
+} ScoredMove;
+
+static int compareScoredMoves(const void* a, const void* b) {
+    return ((ScoredMove*)b)->score - ((ScoredMove*)a)->score;  // Descending order
+}
+
 // Sort moves by score
 void sortMoves(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* moves, int numMoves, Move* hashMove, int depth) {
-    // Calculate scores
-    int scores[MAX_MOVES];
+    if (numMoves <= 1) return;
+    
+    ScoredMove scoredMoves[MAX_MOVES];
     
     for (int i = 0; i < numMoves; i++) {
-        scores[i] = scoreMoveForOrdering(board, &moves[i], hashMove, depth);
+        scoredMoves[i].move = moves[i];
+        scoredMoves[i].score = scoreMoveForOrdering(board, &moves[i], hashMove, depth);
     }
     
-    // Simple bubble sort (good enough for ~30-40 moves)
-    for (int i = 0; i < numMoves - 1; i++) {
-        for (int j = i + 1; j < numMoves; j++) {
-            if (scores[j] > scores[i]) {
-                // Swap moves
-                Move tempMove = moves[i];
-                moves[i] = moves[j];
-                moves[j] = tempMove;
-                
-                // Swap scores
-                int tempScore = scores[i];
-                scores[i] = scores[j];
-                scores[j] = tempScore;
-            }
-        }
+    qsort(scoredMoves, numMoves, sizeof(ScoredMove), compareScoredMoves);
+    
+    for (int i = 0; i < numMoves; i++) {
+        moves[i] = scoredMoves[i].move;
     }
 }

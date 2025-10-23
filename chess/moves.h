@@ -9,6 +9,7 @@ typedef struct {
     int startCol;
     int endRow;
     int endCol;
+    char promotionPiece;  // ADD THIS: 'Q', 'R', 'B', 'N', or 0 for none
 } Move;
 
 // Core move validation
@@ -31,5 +32,9 @@ int isValidKingMove(char board[8][8], int startRow, int startCol, int endRow, in
 
 // Move generation for bot
 int generateAllLegalMoves(char board[8][8], int whiteToMove, Move moves[], GameState* state);
+
+// ADD THIS: Promotion validation helper
+int isLegalMoveWithPromotion(char board[8][8], int startRow, int startCol, int endRow, int endCol, 
+                            int whiteToMove, GameState* state, char promotionPiece);
 
 #endif

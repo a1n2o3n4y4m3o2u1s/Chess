@@ -66,6 +66,100 @@ static const int queenKingOffsets[8][2] = {
 };
 
 // ============================================================================
+// PROMOTION HELPER FUNCTION
+// ============================================================================
+
+int isLegalMoveWithPromotion(char board[8][8], int startRow, int startCol, int endRow, int endCol, 
+                            int whiteToMove, GameState* state, char promotionPiece) {
+    // Check basic validity
+    if (!isCorrectColorMoving(board, startRow, startCol, whiteToMove)) return 0;
+    if (!isNotCapturingSameColor(board, endRow, endCol, whiteToMove)) return 0;
+    
+    // Check piece-specific rules
+    if (!canPieceMoveTo(board, startRow, startCol, endRow, endCol, state)) return 0;
+    
+    // For pawn promotion, verify it's a valid promotion square and piece
+    char piece = board[startRow][startCol];
+    if (toupper(piece) == 'P' && (endRow == 0 || endRow == 7)) {
+        char validPieces[] = {'Q', 'R', 'B', 'N'};
+        int isValidPromotion = 0;
+        for (int i = 0; i < 4; i++) {
+            if (toupper(promotionPiece) == validPieces[i]) {
+                isValidPromotion = 1;
+                break;
+            }
+        }
+        if (!isValidPromotion) return 0;
+    }
+    
+    // Move cannot leave own king in check
+    if (doesMovePutKingInCheck(board, startRow, startCol, endRow, endCol, whiteToMove, state)) {
+        return 0;
+    }
+    
+    return 1;
+}
+
+// ============================================================================
+// CASTLING MOVE GENERATION
+// ============================================================================
+
+// ============================================================================
+// CORRECTED CASTLING MOVE GENERATION
+// ============================================================================
+
+static int generateCastlingMoves(char board[8][8], int row, int col, Move moves[], int count, int whiteToMove, GameState* state) {
+    // Only kings can castle
+    if (toupper(board[row][col]) != 'K') return count;
+    
+    int isWhite = isWhitePiece(board[row][col]);
+    
+    // Kingside castling
+    if ((isWhite && state->whiteKingsideCastle) || (!isWhite && state->blackKingsideCastle)) {
+        int rookCol = 7; // h-file
+        int kingTargetCol = col + 2;
+        int rookTargetCol = col + 1;
+        
+        // Check if path is clear
+        if (isEmpty(board[row][col+1]) && isEmpty(board[row][col+2])) {
+            // Check if rook is in correct position
+            char expectedRook = isWhite ? 'R' : 'r';
+            if (board[row][rookCol] == expectedRook) {
+                // Check if squares are not attacked
+                if (!isSquareAttacked(board, row, col, !whiteToMove, state) &&
+                    !isSquareAttacked(board, row, col+1, !whiteToMove, state) &&
+                    !isSquareAttacked(board, row, col+2, !whiteToMove, state)) {
+                    moves[count++] = (Move){row, col, row, kingTargetCol, 0};
+                }
+            }
+        }
+    }
+    
+    // Queenside castling
+    if ((isWhite && state->whiteQueensideCastle) || (!isWhite && state->blackQueensideCastle)) {
+        int rookCol = 0; // a-file
+        int kingTargetCol = col - 2;
+        int rookTargetCol = col - 1;
+        
+        // Check if path is clear (queenside has 3 squares between rook and king)
+        if (isEmpty(board[row][col-1]) && isEmpty(board[row][col-2]) && isEmpty(board[row][col-3])) {
+            // Check if rook is in correct position
+            char expectedRook = isWhite ? 'R' : 'r';
+            if (board[row][rookCol] == expectedRook) {
+                // Check if squares are not attacked (don't need to check b1/b8 for white/black)
+                if (!isSquareAttacked(board, row, col, !whiteToMove, state) &&
+                    !isSquareAttacked(board, row, col-1, !whiteToMove, state) &&
+                    !isSquareAttacked(board, row, col-2, !whiteToMove, state)) {
+                    moves[count++] = (Move){row, col, row, kingTargetCol, 0};
+                }
+            }
+        }
+    }
+    
+    return count;
+}
+
+// ============================================================================
 // PIECE MOVEMENT RULES (KEEP ORIGINAL SIGNATURES)
 // ============================================================================
 
@@ -216,7 +310,72 @@ int isValidKingMove(char board[8][8], int startRow, int startCol, int endRow, in
 }
 
 // ============================================================================
-// PIECE-SPECIFIC MOVE GENERATORS (NEW EFFICIENT FUNCTIONS)
+// IMPROVED PAWN MOVE GENERATION WITH PROMOTION
+// ============================================================================
+
+static int generatePawnMoves(char board[8][8], int row, int col, Move moves[], int count, int whiteToMove, GameState* state) {
+    char piece = board[row][col];
+    int isWhite = isWhitePiece(piece);
+    int direction = isWhite ? -1 : 1;
+    int startRank = isWhite ? 6 : 1;
+    int promotionRank = isWhite ? 0 : 7;
+    
+    // Single forward move
+    int newRow = row + direction;
+    if (newRow >= 0 && newRow < 8 && isEmpty(board[newRow][col])) {
+        if (newRow == promotionRank) {
+            // Generate all promotion options
+            char promotionPieces[] = {'Q', 'R', 'B', 'N'};
+            for (int i = 0; i < 4; i++) {
+                if (isLegalMoveWithPromotion(board, row, col, newRow, col, whiteToMove, state, promotionPieces[i])) {
+                    moves[count++] = (Move){row, col, newRow, col, promotionPieces[i]};
+                }
+            }
+        } else {
+            if (isLegalMove(board, row, col, newRow, col, whiteToMove, state)) {
+                moves[count++] = (Move){row, col, newRow, col, 0};
+            }
+        }
+        
+        // Double forward move from starting position
+        if (row == startRank) {
+            int doubleRow = row + 2 * direction;
+            if (doubleRow >= 0 && doubleRow < 8 && isEmpty(board[doubleRow][col]) && 
+                isLegalMove(board, row, col, doubleRow, col, whiteToMove, state)) {
+                moves[count++] = (Move){row, col, doubleRow, col, 0};
+            }
+        }
+    }
+    
+    // Diagonal captures (including en passant)
+    int captureCols[] = {col - 1, col + 1};
+    for (int i = 0; i < 2; i++) {
+        int newCol = captureCols[i];
+        if (newCol < 0 || newCol >= 8) continue;
+        
+        int newRow = row + direction;
+        if (newRow < 0 || newRow >= 8) continue;
+        
+        // Check if this is a legal capture (normal or en passant)
+        if (isLegalMove(board, row, col, newRow, newCol, whiteToMove, state)) {
+            if (newRow == promotionRank) {
+                // Generate all promotion options for captures
+                char promotionPieces[] = {'Q', 'R', 'B', 'N'};
+                for (int j = 0; j < 4; j++) {
+                    if (isLegalMoveWithPromotion(board, row, col, newRow, newCol, whiteToMove, state, promotionPieces[j])) {
+                        moves[count++] = (Move){row, col, newRow, newCol, promotionPieces[j]};
+                    }
+                }
+            } else {
+                moves[count++] = (Move){row, col, newRow, newCol, 0};
+            }
+        }
+    }
+    return count;
+}
+
+// ============================================================================
+// PIECE-SPECIFIC MOVE GENERATORS
 // ============================================================================
 
 static int generateKnightMoves(char board[8][8], int row, int col, Move moves[], int count, int whiteToMove, GameState* state) {
@@ -233,47 +392,8 @@ static int generateKnightMoves(char board[8][8], int row, int col, Move moves[],
             moves[count].startCol = col;
             moves[count].endRow = newRow;
             moves[count].endCol = newCol;
+            moves[count].promotionPiece = 0;
             count++;
-        }
-    }
-    return count;
-}
-
-static int generatePawnMoves(char board[8][8], int row, int col, Move moves[], int count, int whiteToMove, GameState* state) {
-    char piece = board[row][col];
-    int isWhite = isWhitePiece(piece);
-    int direction = isWhite ? -1 : 1;
-    int startRank = isWhite ? 6 : 1;
-    
-    // Single forward move
-    int newRow = row + direction;
-    if (newRow >= 0 && newRow < 8 && isEmpty(board[newRow][col])) {
-        if (isLegalMove(board, row, col, newRow, col, whiteToMove, state)) {
-            moves[count++] = (Move){row, col, newRow, col};
-        }
-        
-        // Double forward move from starting position
-        if (row == startRank) {
-            int doubleRow = row + 2 * direction;
-            if (doubleRow >= 0 && doubleRow < 8 && isEmpty(board[doubleRow][col]) && 
-                isLegalMove(board, row, col, doubleRow, col, whiteToMove, state)) {
-                moves[count++] = (Move){row, col, doubleRow, col};
-            }
-        }
-    }
-    
-    // Diagonal captures (including en passant)
-    int captureCols[] = {col - 1, col + 1};
-    for (int i = 0; i < 2; i++) {
-        int newCol = captureCols[i];
-        if (newCol < 0 || newCol >= 8) continue;
-        
-        int newRow = row + direction;
-        if (newRow < 0 || newRow >= 8) continue;
-        
-        // Check if this is a legal capture (normal or en passant)
-        if (isLegalMove(board, row, col, newRow, newCol, whiteToMove, state)) {
-            moves[count++] = (Move){row, col, newRow, newCol};
         }
     }
     return count;
@@ -290,7 +410,7 @@ static int generateBishopMoves(char board[8][8], int row, int col, Move moves[],
         while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
             // Check if move is legal
             if (isLegalMove(board, row, col, newRow, newCol, whiteToMove, state)) {
-                moves[count++] = (Move){row, col, newRow, newCol};
+                moves[count++] = (Move){row, col, newRow, newCol, 0};
             }
             
             // Stop if we hit a piece (we already included the capture in the check above)
@@ -316,7 +436,7 @@ static int generateRookMoves(char board[8][8], int row, int col, Move moves[], i
         while (newRow >= 0 && newRow < 8 && newCol >= 0 && newCol < 8) {
             // Check if move is legal
             if (isLegalMove(board, row, col, newRow, newCol, whiteToMove, state)) {
-                moves[count++] = (Move){row, col, newRow, newCol};
+                moves[count++] = (Move){row, col, newRow, newCol, 0};
             }
             
             // Stop if we hit a piece
@@ -347,12 +467,13 @@ static int generateKingMoves(char board[8][8], int row, int col, Move moves[], i
         if (newRow < 0 || newRow >= 8 || newCol < 0 || newCol >= 8) continue;
         
         if (isLegalMove(board, row, col, newRow, newCol, whiteToMove, state)) {
-            moves[count++] = (Move){row, col, newRow, newCol};
+            moves[count++] = (Move){row, col, newRow, newCol, 0};
         }
     }
     
-    // Castling moves - these will be automatically included if they pass isLegalMove
-    // which calls your existing isValidKingMove with castling logic
+    // Add castling moves
+    count = generateCastlingMoves(board, row, col, moves, count, whiteToMove, state);
+    
     return count;
 }
 

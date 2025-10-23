@@ -9,38 +9,134 @@
 #include <stdlib.h>
 
 void makeMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move, char* savedStart, char* savedEnd, 
-              char* savedCaptured, int* wasEnPassant) {
+              char* savedCaptured, int* wasEnPassant, GameState* state) {
     *savedStart = board[move->startRow][move->startCol];
     *savedEnd = board[move->endRow][move->endCol];
     *wasEnPassant = 0;
     *savedCaptured = '.';
     
+    int isWhite = isWhitePiece(*savedStart);
+    
+    // Handle castling first
+    if (toupper(*savedStart) == 'K' && abs(move->endCol - move->startCol) == 2) {
+        // Kingside castling
+        if (move->endCol > move->startCol) {
+            // Move rook from h-file to f-file
+            int rookStartCol = 7;
+            int rookEndCol = move->endCol - 1;
+            *savedCaptured = board[move->startRow][rookStartCol]; // Save rook
+            board[move->startRow][rookEndCol] = board[move->startRow][rookStartCol];
+            board[move->startRow][rookStartCol] = '.';
+        } 
+        // Queenside castling
+        else {
+            // Move rook from a-file to d-file
+            int rookStartCol = 0;
+            int rookEndCol = move->endCol + 1;
+            *savedCaptured = board[move->startRow][rookStartCol]; // Save rook
+            board[move->startRow][rookEndCol] = board[move->startRow][rookStartCol];
+            board[move->startRow][rookStartCol] = '.';
+        }
+        
+        // Update castling rights
+        if (isWhite) {
+            state->whiteKingsideCastle = 0;
+            state->whiteQueensideCastle = 0;
+        } else {
+            state->blackKingsideCastle = 0;
+            state->blackQueensideCastle = 0;
+        }
+    }
+    
     // Handle en passant
     if (toupper(*savedStart) == 'P' && move->endCol != move->startCol && 
         isEmpty(board[move->endRow][move->endCol])) {
+        // For en passant, the captured pawn is on the same row as start, but target column
         *savedCaptured = board[move->startRow][move->endCol];
         board[move->startRow][move->endCol] = '.';
         *wasEnPassant = 1;
     }
     
-    board[move->endRow][move->endCol] = *savedStart;
+    // Handle promotion
+    int isPromotion = (toupper(*savedStart) == 'P') && 
+                     ((isWhite && move->endRow == 0) || (!isWhite && move->endRow == 7));
+    
+    if (isPromotion) {
+        char promotionPiece = move->promotionPiece;
+        if (promotionPiece == 0) {
+            // Default to queen if no promotion piece specified (for search)
+            promotionPiece = isWhite ? 'Q' : 'q';
+        } else {
+            // Ensure correct case for the promotion piece
+            promotionPiece = isWhite ? toupper(promotionPiece) : tolower(promotionPiece);
+        }
+        board[move->endRow][move->endCol] = promotionPiece;
+    } else {
+        board[move->endRow][move->endCol] = *savedStart;
+    }
+    
     board[move->startRow][move->startCol] = '.';
     
-    // Handle promotion (auto to queen)
-    if (toupper(*savedStart) == 'P') {
-        if (*savedStart == 'P' && move->endRow == 0) {
-            board[move->endRow][move->endCol] = 'Q';
-        } else if (*savedStart == 'p' && move->endRow == 7) {
-            board[move->endRow][move->endCol] = 'q';
+    // Update castling rights if rook is captured
+    if (toupper(*savedEnd) == 'R') {
+        if (move->endRow == 7 && move->endCol == 7) state->whiteKingsideCastle = 0;
+        if (move->endRow == 7 && move->endCol == 0) state->whiteQueensideCastle = 0;
+        if (move->endRow == 0 && move->endCol == 7) state->blackKingsideCastle = 0;
+        if (move->endRow == 0 && move->endCol == 0) state->blackQueensideCastle = 0;
+    }
+    
+    // Update castling rights if rook moves (already handled for king above)
+    if (toupper(*savedStart) == 'R') {
+        if (move->startRow == 7 && move->startCol == 7) state->whiteKingsideCastle = 0;
+        if (move->startRow == 7 && move->startCol == 0) state->whiteQueensideCastle = 0;
+        if (move->startRow == 0 && move->startCol == 7) state->blackKingsideCastle = 0;
+        if (move->startRow == 0 && move->startCol == 0) state->blackQueensideCastle = 0;
+    }
+    
+    // Update castling rights if king moves (already handled in castling section, but handle normal king moves)
+    if (toupper(*savedStart) == 'K' && abs(move->endCol - move->startCol) != 2) {
+        // Normal king move (not castling)
+        if (isWhite) {
+            state->whiteKingsideCastle = 0;
+            state->whiteQueensideCastle = 0;
+        } else {
+            state->blackKingsideCastle = 0;
+            state->blackQueensideCastle = 0;
         }
     }
 }
 
 void unmakeMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move, char savedStart, char savedEnd, 
-                char savedCaptured, int wasEnPassant) {
+                char savedCaptured, int wasEnPassant, GameState* state) {
+    int isWhite = isWhitePiece(savedStart);
+    
+    // Handle castling restoration first
+    if (toupper(savedStart) == 'K' && abs(move->endCol - move->startCol) == 2) {
+        // Kingside castling restoration
+        if (move->endCol > move->startCol) {
+            // Restore rook from f-file to h-file
+            int rookCurrentCol = move->endCol - 1;
+            int rookOriginalCol = 7;
+            board[move->startRow][rookOriginalCol] = board[move->startRow][rookCurrentCol];
+            board[move->startRow][rookCurrentCol] = '.';
+        } 
+        // Queenside castling restoration
+        else {
+            // Restore rook from d-file to a-file
+            int rookCurrentCol = move->endCol + 1;
+            int rookOriginalCol = 0;
+            board[move->startRow][rookOriginalCol] = board[move->startRow][rookCurrentCol];
+            board[move->startRow][rookCurrentCol] = '.';
+        }
+    }
+    
+    // Restore the main pieces
     board[move->startRow][move->startCol] = savedStart;
     board[move->endRow][move->endCol] = savedEnd;
+    
+    // Handle en passant capture restoration
     if (wasEnPassant) {
+        // For en passant, the captured pawn was on the start row, end column
         board[move->startRow][move->endCol] = savedCaptured;
     }
 }
@@ -54,7 +150,7 @@ void updateEnPassant(GameState* state, Move* move, char piece) {
 }
 
 // ============================================================================
-// QUIESCENCE SEARCH
+// QUIESCENCE SEARCH (UPDATED FOR PROMOTION)
 // ============================================================================
 
 // Search only captures to avoid horizon effect
@@ -83,18 +179,17 @@ int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* stat
     Move moves[MAX_MOVES];
     int numMoves = generateAllLegalMoves(board, maximizing, moves, state);
     
-    // Only search capture moves
+    // Only search capture moves and promotions (treat promotions as captures)
     Move captures[MAX_MOVES];
     int numCaptures = 0;
     for (int i = 0; i < numMoves; i++) {
         char target = board[moves[i].endRow][moves[i].endCol];
         char piece = board[moves[i].startRow][moves[i].startCol];
         int isCapture = !isEmpty(target);
-        int isPromotion = 0;
-        if (toupper(piece) == 'P') {
-            if (isWhitePiece(piece) && moves[i].endRow == 0) isPromotion = 1;
-            else if (!isWhitePiece(piece) && moves[i].endRow == 7) isPromotion = 1;
-        }
+        int isPromotion = (toupper(piece) == 'P') && 
+                         ((isWhitePiece(piece) && moves[i].endRow == 0) || 
+                          (!isWhitePiece(piece) && moves[i].endRow == 7));
+        
         if (isCapture || isPromotion) {
             captures[numCaptures++] = moves[i];
         }
@@ -114,13 +209,13 @@ int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* stat
         int wasEnPassant;
         GameState savedState = *state;
         
-        makeMove(board, &captures[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant);
+        makeMove(board, &captures[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
         updateEnPassant(state, &captures[i], savedStart);
         
         int score = quiescenceSearch(board, state, alpha, beta, !maximizing, 
                                     nodesEvaluated, startTime);
         
-        unmakeMove(board, &captures[i], savedStart, savedEnd, savedCaptured, wasEnPassant);
+        unmakeMove(board, &captures[i], savedStart, savedEnd, savedCaptured, wasEnPassant, state);
         *state = savedState;
         
         if (maximizing) {
@@ -136,7 +231,7 @@ int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* stat
 }
 
 // ============================================================================
-// MINIMAX WITH ALPHA-BETA PRUNING + OPTIMIZATIONS
+// MINIMAX WITH ALPHA-BETA PRUNING + OPTIMIZATIONS (UPDATED)
 // ============================================================================
 
 int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int depth, int alpha, int beta, 
@@ -195,7 +290,7 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
             int wasEnPassant;
             GameState savedState = *state;
             
-            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant);
+            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
             updateEnPassant(state, &moves[i], savedStart);
             unsigned long long newHash = computeHash(board);
             
@@ -221,7 +316,7 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
                                nodesEvaluated, newHash, startTime, ply + 1);
             }
             
-            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant);
+            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant, state);
             *state = savedState;
             
             if (score > maxScore) {
@@ -255,7 +350,7 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
             int wasEnPassant;
             GameState savedState = *state;
             
-            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant);
+            makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
             updateEnPassant(state, &moves[i], savedStart);
             unsigned long long newHash = computeHash(board);
             
@@ -278,7 +373,7 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
                                nodesEvaluated, newHash, startTime, ply + 1);
             }
             
-            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant);
+            unmakeMove(board, &moves[i], savedStart, savedEnd, savedCaptured, wasEnPassant, state);
             *state = savedState;
             
             if (score < minScore) {
