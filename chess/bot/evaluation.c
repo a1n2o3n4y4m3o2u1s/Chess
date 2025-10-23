@@ -15,7 +15,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
     pieceValues['Q'] = 900;   pieceValues['q'] = 900;
     pieceValues['K'] = 20000; pieceValues['k'] = 20000;
     
-    // Pawn structure bonuses
+    // Pawn structure bonuses (symmetric)
     static const int pawnTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
         { 0,  0,  0,  0,  0,  0,  0,  0},
         {50, 50, 50, 50, 50, 50, 50, 50},
@@ -27,7 +27,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         { 0,  0,  0,  0,  0,  0,  0,  0}
     };
     
-    // Knight position bonuses
+    // Knight position bonuses (symmetric)
     static const int knightTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
         {-50,-40,-30,-30,-30,-30,-40,-50},
         {-40,-20,  0,  0,  0,  0,-20,-40},
@@ -39,7 +39,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         {-50,-40,-30,-30,-30,-30,-40,-50}
     };
     
-    // Bishop position bonuses
+    // Bishop position bonuses (symmetric)
     static const int bishopTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
         {-20,-10,-10,-10,-10,-10,-10,-20},
         {-10,  0,  0,  0,  0,  0,  0,-10},
@@ -51,7 +51,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         {-20,-10,-10,-10,-10,-10,-10,-20}
     };
     
-    // King safety (middle game)
+    // King safety (middle game) - FIXED: Now properly symmetric
     static const int kingTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
         {-30,-40,-40,-50,-50,-40,-40,-30},
         {-30,-40,-40,-50,-50,-40,-40,-30},
@@ -63,7 +63,19 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         { 20, 30, 10,  0,  0, 10, 30, 20}
     };
     
-    // NEW: Rook position bonuses
+    // King safety (endgame) - NEW: Separate endgame king table
+    static const int kingTableEndgame[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
+        {-50,-40,-30,-20,-20,-30,-40,-50},
+        {-30,-20,-10,  0,  0,-10,-20,-30},
+        {-30,-10, 20, 30, 30, 20,-10,-30},
+        {-30,-10, 30, 40, 40, 30,-10,-30},
+        {-30,-10, 30, 40, 40, 30,-10,-30},
+        {-30,-10, 20, 30, 30, 20,-10,-30},
+        {-30,-30,  0,  0,  0,  0,-30,-30},
+        {-50,-30,-30,-30,-30,-30,-30,-50}
+    };
+    
+    // Rook position bonuses (symmetric)
     static const int rookTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE] = {
         { 0,  0,  0,  5,  5,  0,  0,  0},
         {-5,  0,  0,  0,  0,  0,  0, -5},
@@ -75,27 +87,22 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         { 0,  0,  0,  0,  0,  0,  0,  0}
     };
     
-    // CHANGED: Single pass instead of multiple passes
+    // Piece counts
     int whiteMinorCount = 0, blackMinorCount = 0;
     int whiteMajorCount = 0, blackMajorCount = 0;
     int whiteBishopCount = 0, blackBishopCount = 0;
     int whitePawnCount = 0, blackPawnCount = 0;
-    int whitePawnsOnFile[8] = {0};  // NEW: For doubled pawn detection
+    int whitePawnsOnFile[8] = {0};
     int blackPawnsOnFile[8] = {0};
     
-    // CHANGED: Combined counting and evaluation into single pass
+    // First pass: count pieces for game phase detection
     for (int row = 0; row < MAX_BOARD_SIZE; row++) {
         for (int col = 0; col < MAX_BOARD_SIZE; col++) {
             char piece = board[row][col];
             if (isEmpty(piece)) continue;
             
             char pieceType = toupper(piece);
-            int value = pieceValues[(int)piece];
-            int positionalBonus = 0;
-            int isWhite = isWhitePiece(piece);
-            
-            // Count pieces for various evaluations
-            if (isWhite) {
+            if (isWhitePiece(piece)) {
                 switch (pieceType) {
                     case 'N': case 'B': 
                         whiteMinorCount++;
@@ -106,7 +113,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
                         break;
                     case 'P':
                         whitePawnCount++;
-                        whitePawnsOnFile[col]++;  // Track pawn files
+                        whitePawnsOnFile[col]++;
                         break;
                 }
             } else {
@@ -120,15 +127,33 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
                         break;
                     case 'P':
                         blackPawnCount++;
-                        blackPawnsOnFile[col]++;  // Track pawn files
+                        blackPawnsOnFile[col]++;
                         break;
                 }
             }
+        }
+    }
+    
+    // Calculate game phase for both sides independently
+    int whiteGamePhase = (whiteMinorCount + whiteMajorCount + whitePawnCount);
+    int blackGamePhase = (blackMinorCount + blackMajorCount + blackPawnCount);
+    int whiteEndgame = (whiteGamePhase <= 10);
+    int blackEndgame = (blackGamePhase <= 10);
+    
+    // Second pass: evaluate pieces with proper symmetry
+    for (int row = 0; row < MAX_BOARD_SIZE; row++) {
+        for (int col = 0; col < MAX_BOARD_SIZE; col++) {
+            char piece = board[row][col];
+            if (isEmpty(piece)) continue;
             
-            // Positional evaluation
+            char pieceType = toupper(piece);
+            int value = pieceValues[(int)piece];
+            int positionalBonus = 0;
+            int isWhite = isWhitePiece(piece);
+            
             if (isWhite) {
                 score += value;
-                int flippedRow = MAX_BOARD_SIZE - 1 - row;
+                int flippedRow = MAX_BOARD_SIZE - 1 - row;  // Mirror for white
                 
                 switch (pieceType) {
                     case 'P': 
@@ -142,84 +167,82 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
                         break;
                     case 'R':
                         positionalBonus = rookTable[flippedRow][col];
-                        // NEW: Rook on open file bonus
+                        // Rook on open file bonus
                         if (whitePawnsOnFile[col] == 0) {
                             positionalBonus += 15;
                         }
-                        // NEW: Rook on 7th rank bonus
-                        if (flippedRow == 1) {  // 7th rank for white
+                        // Rook on 7th rank bonus
+                        if (flippedRow == 1) {
                             positionalBonus += 20;
                         }
                         break;
                     case 'Q':
-                        // NEW: Keep queen safe in early game
-                        if (whiteMinorCount + whiteMajorCount > 8) {
+                        // Keep queen safe in early game
+                        if (!whiteEndgame) {
                             positionalBonus = -abs(col - 3) - abs(flippedRow - 3);
                         }
                         break;
                     case 'K':
-                        // FIXED: Move variable declaration outside switch
-                        if (whiteMinorCount + whiteMajorCount + whitePawnCount > 10) {  // Middlegame
+                        if (whiteEndgame) {
+                            positionalBonus = kingTableEndgame[flippedRow][col];
+                        } else {
                             positionalBonus = kingTable[flippedRow][col];
-                        } else {  // Endgame
-                            positionalBonus = -abs(col - 3) - abs(flippedRow - 3);
                         }
                         break;
                 }
                 score += positionalBonus;
                 
-            } else {  // Black pieces
+            } else {  // Black pieces - FIXED: Now properly symmetric
                 score -= value;
+                int blackRow = row;  // No flipping for black - tables are symmetric
                 
                 switch (pieceType) {
                     case 'P': 
-                        positionalBonus = pawnTable[row][col];
+                        positionalBonus = pawnTable[blackRow][col];
                         break;
                     case 'N':
-                        positionalBonus = knightTable[row][col];
+                        positionalBonus = knightTable[blackRow][col];
                         break;
                     case 'B':
-                        positionalBonus = bishopTable[row][col];
+                        positionalBonus = bishopTable[blackRow][col];
                         break;
                     case 'R':
-                        positionalBonus = rookTable[row][col];
-                        // NEW: Rook on open file bonus
+                        positionalBonus = rookTable[blackRow][col];
+                        // Rook on open file bonus
                         if (blackPawnsOnFile[col] == 0) {
                             positionalBonus += 15;
                         }
-                        // NEW: Rook on 7th rank bonus (rank 1 for black)
-                        if (row == 6) {  // 7th rank for black
+                        // Rook on 7th rank bonus (row 6 for black)
+                        if (blackRow == 6) {
                             positionalBonus += 20;
                         }
                         break;
                     case 'Q':
-                        // NEW: Keep queen safe in early game
-                        if (blackMinorCount + blackMajorCount > 8) {
-                            positionalBonus = -abs(col - 3) - abs(row - 3);
+                        // Keep queen safe in early game
+                        if (!blackEndgame) {
+                            positionalBonus = -abs(col - 3) - abs(blackRow - 3);
                         }
                         break;
                     case 'K':
-                        // FIXED: Move variable declaration outside switch
-                        if (blackMinorCount + blackMajorCount + blackPawnCount > 10) {  // Middlegame
-                            positionalBonus = kingTable[row][col];
-                        } else {  // Endgame
-                            positionalBonus = -abs(col - 3) - abs(row - 3);
+                        if (blackEndgame) {
+                            positionalBonus = kingTableEndgame[blackRow][col];
+                        } else {
+                            positionalBonus = kingTable[blackRow][col];
                         }
                         break;
                 }
-                score -= positionalBonus;
+                score -= positionalBonus;  // Subtract for black
             }
         }
     }
     
-    // NEW: Doubled pawn penalty (simple but effective)
+    // Pawn structure evaluation (symmetric)
     for (int col = 0; col < MAX_BOARD_SIZE; col++) {
+        // Doubled pawn penalty
         if (whitePawnsOnFile[col] > 1) score -= 10 * (whitePawnsOnFile[col] - 1);
         if (blackPawnsOnFile[col] > 1) score += 10 * (blackPawnsOnFile[col] - 1);
-    }
-    
-    // NEW: Isolated pawn penalty (simple version)
-    for (int col = 0; col < MAX_BOARD_SIZE; col++) {
+        
+        // Isolated pawn penalty
         int whiteIsolated = (whitePawnsOnFile[col] > 0) &&
                            (col == 0 || whitePawnsOnFile[col-1] == 0) &&
                            (col == MAX_BOARD_SIZE-1 || whitePawnsOnFile[col+1] == 0);
@@ -231,11 +254,11 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         if (blackIsolated) score += 15;
     }
     
-    // Bishop pair bonuses
+    // Bishop pair bonuses (symmetric)
     if (whiteBishopCount >= 2) score += 50;
     if (blackBishopCount >= 2) score -= 50;
     
-    // Center control bonus
+    // Center control bonus (symmetric)
     for (int row = 3; row <= 4; row++) {
         for (int col = 3; col <= 4; col++) {
             char piece = board[row][col];

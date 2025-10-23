@@ -17,7 +17,7 @@
 // CONFIGURATION
 // ============================================================================
 
-double BOT_TIME_LIMIT_SECONDS = 10;  // Default time limit
+double BOT_TIME_LIMIT_SECONDS = 1;  // Default time limit
 
 // Constants for magic numbers
 #define MAX_BOARD_SIZE 8

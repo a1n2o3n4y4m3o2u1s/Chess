@@ -62,7 +62,7 @@ void displayTime(TimeControl* tc) {
 double calculateBotThinkTime(TimeControl* tc, int whiteToMove, int positionEval, int moveNumber) {
     if (!tc->enabled) {
         // No time control - use default
-        return 10.0;
+        return 1;
     }
     
     double timeRemaining = whiteToMove ? tc->whiteTimeRemaining : tc->blackTimeRemaining;
