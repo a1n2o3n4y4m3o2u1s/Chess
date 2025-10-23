@@ -9,6 +9,7 @@ typedef struct {
     int blackQueensideCastle;
     int enPassantCol;  // -1 if no en passant available
     int enPassantRow;
+    int moveNumber;    // Track move number for time management
 } GameState;
 
 // Initialize game state with default values

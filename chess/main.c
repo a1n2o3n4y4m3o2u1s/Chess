@@ -7,6 +7,8 @@
 #include <moves.h>
 #include <gameState.h>
 #include <bot.h>
+#include "timeControl.h"
+#include <evaluation.h>
 
 // ============================================================================
 // GAME MODES
@@ -129,6 +131,12 @@ static void executeMove(char board[8][8], GameState* state, int startRow, int st
     
     updateCastlingRights(state, board, startRow, startCol, endRow, endCol);
     updateEnPassantState(state, board, startRow, endRow, endCol);
+    
+    // Increment move counter after black's move
+    if (!isBotMove || (isBotMove && endRow < 4)) {
+        // Simple heuristic: increment after each pair of moves
+        state->moveNumber++;
+    }
 }
 
 // ============================================================================
@@ -158,6 +166,55 @@ static int isBotTurn(int gameMode, int whiteToMove) {
 }
 
 // ============================================================================
+// TIME CONTROL SETUP
+// ============================================================================
+
+static void setupTimeControl(TimeControl* tc, BotSettings* botSettings) {
+    printf("\n=== Time Control Setup ===\n");
+    printf("Enter base time in minutes (0 for no time control): ");
+    
+    double minutes;
+    if (scanf("%lf", &minutes) != 1 || minutes < 0) {
+        minutes = 0;
+    }
+    
+    double increment = 0;
+    if (minutes > 0) {
+        printf("Enter increment in seconds: ");
+        if (scanf("%lf", &increment) != 1 || increment < 0) {
+            increment = 0;
+        }
+    }
+    
+    initTimeControl(tc, minutes, increment);
+    
+    if (tc->enabled) {
+        printf("Time control: %.0f+%.0f\n", minutes, increment);
+    } else {
+        printf("No time control (unlimited time)\n");
+    }
+    
+    // Ask about bot automation
+    printf("\nBot play mode:\n");
+    printf("  'auto' - Bot moves automatically\n");
+    printf("  'manual' - Type 'next' to advance bot moves\n");
+    printf("Select mode: ");
+    
+    char mode[10];
+    scanf("%9s", mode);
+    
+    if (strcmp(mode, "auto") == 0) {
+        botSettings->autoPlay = 1;
+        printf("Bot will play automatically\n");
+    } else {
+        botSettings->autoPlay = 0;
+        printf("Bot requires 'next' command to move\n");
+    }
+    
+    printf("==========================\n\n");
+}
+
+// ============================================================================
 // MODE SELECTION
 // ============================================================================
 
@@ -166,7 +223,8 @@ static int selectGameMode() {
     printf("- 'pvp' : Player vs Player\n");
     printf("- 'pvb' : Player vs Bot\n");
     printf("- 'bvb' : Bot vs Bot\n");
-    printf("- 'next' : Advance to next bot move (when bot is playing)\n");
+    printf("- 'next' : Advance to next bot move (manual mode)\n");
+    printf("- 'time' : Display remaining time\n");
     printf("- 'quit' : Exit\n");
     printf("- Move format: e2e4\n\n");
     
@@ -196,7 +254,7 @@ static int selectGameMode() {
             }
         } 
         else if (strcmp(input, "bvb") == 0) {
-            printf("Mode set to Bot vs Bot. Type 'next' after each move to continue.\n");
+            printf("Mode set to Bot vs Bot.\n");
             return MODE_BVB;
         } 
         else {
@@ -229,7 +287,7 @@ static int handleModeChange(char* input, int* gameMode) {
     } 
     else if (strcmp(input, "bvb") == 0) {
         *gameMode = MODE_BVB;
-        printf("Mode set to Bot vs Bot. Type 'next' after each move to continue.\n");
+        printf("Mode set to Bot vs Bot.\n");
         return 1;
     }
     return 0;
@@ -245,6 +303,8 @@ int main() {
     
     char board[8][8];
     GameState state;
+    TimeControl timeControl;
+    BotSettings botSettings;
     
     initializeBoard(board);
     initializeGameState(&state);
@@ -252,8 +312,22 @@ int main() {
     int whiteToMove = 1;
     int gameMode = selectGameMode();
     
+    setupTimeControl(&timeControl, &botSettings);
+    
     while (1) {
         printBoard(board);
+        
+        // Display time if enabled
+        if (timeControl.enabled) {
+            displayTime(&timeControl);
+        }
+        
+        // Check for time expiration
+        if (hasTimeExpired(&timeControl, whiteToMove)) {
+            printf("\n*** TIME EXPIRED! %s loses on time! ***\n\n", 
+                   whiteToMove ? "White" : "Black");
+            break;
+        }
         
         if (checkGameStatus(board, whiteToMove, &state)) {
             break;  // Game over
@@ -264,17 +338,35 @@ int main() {
         
         if (isBotTurn(gameMode, whiteToMove)) {
             // Bot's turn
-            printf("Bot ready to move. Type 'next' to continue (or 'quit' to exit):\n");
-            scanf("%9s", input);
-            
-            if (strcmp(input, "quit") == 0) break;
-            if (strcmp(input, "next") != 0) {
-                printf("Invalid command. Use 'next' to proceed or 'quit' to exit.\n");
-                continue;
+            if (!botSettings.autoPlay) {
+                printf("Bot ready to move. Type 'next' to continue (or 'quit' to exit):\n");
+                scanf("%9s", input);
+                
+                if (strcmp(input, "quit") == 0) break;
+                if (strcmp(input, "time") == 0) {
+                    displayTime(&timeControl);
+                    continue;
+                }
+                if (strcmp(input, "next") != 0) {
+                    printf("Invalid command. Use 'next' to proceed or 'quit' to exit.\n");
+                    continue;
+                }
+            } else {
+                printf("Bot is thinking...\n");
             }
             
-            printf("Bot thinking...\n");
-            selectBotMove(board, whiteToMove, &startRow, &startCol, &endRow, &endCol, &state);
+            // Start timing the bot's move
+            clock_t moveStart = startMoveTimer();
+            
+            // Calculate position evaluation
+            int currentEval = evaluatePosition(board);
+            
+            // Calculate how much time bot should use
+            double thinkTime = calculateBotThinkTime(&timeControl, whiteToMove, 
+                                                     currentEval, state.moveNumber);
+            
+            selectBotMove(board, whiteToMove, &startRow, &startCol, &endRow, &endCol, 
+                         &state, thinkTime, currentEval);
             
             if (startRow == -1) {
                 printf("No legal moves for bot. Game over?\n");
@@ -286,14 +378,28 @@ int main() {
                    'a' + endCol, 8 - endRow);
             
             executeMove(board, &state, startRow, startCol, endRow, endCol, 1);
+            
+            // End timing and update time remaining
+            endMoveTimer(&timeControl, whiteToMove, moveStart);
+            
             whiteToMove = !whiteToMove;
             
         } else {
             // Player's turn
+            // Start timing the player's think time
+            clock_t moveStart = startMoveTimer();
+
             printf("Enter move or command (%s to move):\n", whiteToMove ? "White" : "Black");
+            
             scanf("%9s", input);
+
+            endMoveTimer (&timeControl, whiteToMove, moveStart);
             
             if (strcmp(input, "quit") == 0) break;
+            if (strcmp(input, "time") == 0) {
+                displayTime(&timeControl);
+                continue;
+            }
             if (handleModeChange(input, &gameMode)) continue;
             
             if (!parseMove(input, &startRow, &startCol, &endRow, &endCol)) {
@@ -307,6 +413,8 @@ int main() {
             }
             
             executeMove(board, &state, startRow, startCol, endRow, endCol, 0);
+        
+            
             whiteToMove = !whiteToMove;
         }
     }

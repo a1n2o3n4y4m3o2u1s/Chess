@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <moves.h>
+#include <board.h> 
 
 // Killer moves
 static Move killerMoves[MAX_DEPTH][KILLERS_PER_DEPTH];

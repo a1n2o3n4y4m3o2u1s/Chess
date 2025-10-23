@@ -1,6 +1,37 @@
 #include <stdio.h>
 #include <ctype.h>
-#include <board.h>
+#include <string.h>
+
+#define COLOR_WHITE_SQ "\x1b[48;5;255m"  // White squares
+#define COLOR_BLACK_SQ  "\x1b[48;5;0m"   // Black squares
+#define COLOR_RESET "\x1b[0m"
+
+// Function declarations
+int isEmpty(char piece);
+int isWhitePiece(char piece);
+int isBlackPiece(char piece);
+
+const char* getPieceSymbol(char piece, int is_white_square) {
+    // For white pieces (uppercase)
+    switch(piece) {
+        case 'P': return is_white_square ? "♙" : "♟";  // White pawn on white vs black
+        case 'N': return is_white_square ? "♘" : "♞";  // White knight
+        case 'B': return is_white_square ? "♗" : "♝";  // White bishop
+        case 'R': return is_white_square ? "♖" : "♜";  // White rook
+        case 'Q': return is_white_square ? "♕" : "♛";  // White queen
+        case 'K': return is_white_square ? "♔" : "♚";  // White king
+        
+        // For black pieces (lowercase) - inverse logic
+        case 'p': return is_white_square ? "♟" : "♙";  // Black pawn on white vs black
+        case 'n': return is_white_square ? "♞" : "♘";  // Black knight
+        case 'b': return is_white_square ? "♝" : "♗";  // Black bishop
+        case 'r': return is_white_square ? "♜" : "♖";  // Black rook
+        case 'q': return is_white_square ? "♛" : "♕";  // Black queen
+        case 'k': return is_white_square ? "♚" : "♔";  // Black king
+        
+        default: return " ";
+    }
+}
 
 void initializeBoard(char board[8][8]) {
     // Black pieces on ranks 7-8
@@ -26,16 +57,52 @@ void initializeBoard(char board[8][8]) {
 }
 
 void printBoard(char board[8][8]) {
+    const int cell_width = 5;
+    const int cell_height = 3;
+    const int center_offset = (cell_width + 1) / 2;
+    const int rank_width = center_offset * 2;
+    const int leading_spaces = rank_width + center_offset - 1;
+    const int inter_spaces = cell_width - 1;
+    const int trailing_spaces = cell_width - center_offset;
+
     printf("\n");
     for (int row = 0; row < 8; row++) {
-        printf("%d     ", 8 - row);  // Rank numbers (8 to 1)
-        
-        for (int col = 0; col < 8; col++) {
-            printf("%c   ", board[row][col]);
+        for (int sub = 0; sub < cell_height; sub++) {
+            // Print rank number only on the middle sub-row
+            int is_middle_sub = (sub == cell_height / 2);
+            if (is_middle_sub) {
+                printf("%d%*s", 8 - row, rank_width - 1, "");
+            } else {
+                printf("%*s", rank_width, "");
+            }
+
+            for (int col = 0; col < 8; col++) {
+                char piece = board[row][col];
+                int is_white_square = ((row + col) % 2 == 0);
+                const char* sym = getPieceSymbol(piece, is_white_square);
+                const char* bg_color = is_white_square ? COLOR_WHITE_SQ : COLOR_BLACK_SQ;
+
+                printf("%s", bg_color);
+
+                if (!is_middle_sub || isEmpty(piece)) {
+                    printf("%*s", cell_width, "");
+                } else {
+                    int left_pad = (cell_width - 1) / 2;
+                    int right_pad = cell_width - 1 - left_pad;
+                    printf("%*s%s%*s", left_pad, "", sym, right_pad, "");
+                }
+            }
+            printf("%s\n", COLOR_RESET);
         }
-        printf("\n\n");
     }
-    printf("\n      a   b   c   d   e   f   g   h\n\n");  // File letters
+    printf("\n%*s", leading_spaces, "");
+    for (int i = 0; i < 8; i++) {
+        printf("%c", 'a' + i);
+        if (i < 7) {
+            printf("%*s", inter_spaces, "");
+        }
+    }
+    printf("%*s\n\n", trailing_spaces, "");
 }
 
 int isWhitePiece(char piece) {

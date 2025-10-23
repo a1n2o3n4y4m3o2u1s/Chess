@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>  // For memset, but calloc initializes to zero
 #include <moves.h>
+#include <board.h>
 
 // Zobrist hashing for position identification
 static unsigned long long zobristTable[MAX_BOARD_SIZE][MAX_BOARD_SIZE][MAX_PIECE_TYPES];

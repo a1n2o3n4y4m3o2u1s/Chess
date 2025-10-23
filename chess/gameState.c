@@ -12,6 +12,7 @@ void initializeGameState(GameState* state) {
     state->blackQueensideCastle = 1;
     state->enPassantCol = -1;
     state->enPassantRow = -1;
+    state->moveNumber = 1;
 }
 
 int isSquareAttacked(char board[8][8], int row, int col, int byWhite, GameState* state) {

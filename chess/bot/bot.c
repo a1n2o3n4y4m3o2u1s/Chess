@@ -17,7 +17,7 @@
 // CONFIGURATION
 // ============================================================================
 
-double BOT_TIME_LIMIT_SECONDS = 60.0;  // Time limit for bot to make a move
+double BOT_TIME_LIMIT_SECONDS = 10;  // Default time limit
 
 // Constants for magic numbers
 #define MAX_BOARD_SIZE 8
@@ -28,8 +28,7 @@ double BOT_TIME_LIMIT_SECONDS = 60.0;  // Time limit for bot to make a move
 #define INITIAL_BETA 999999
 
 void setBotDepth(int depth) {
-    // Keep this function for compatibility, but we now use time-based search
-    // We'll use depth as a rough guide: depth 6 ≈ 5 seconds
+    // Keep this function for compatibility
     BOT_TIME_LIMIT_SECONDS = depth * 0.8;
 }
 
@@ -38,7 +37,10 @@ void setBotDepth(int depth) {
 // ============================================================================
 
 void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, int* startRow, int* startCol, 
-                   int* endRow, int* endCol, GameState* state) {
+                   int* endRow, int* endCol, GameState* state, double thinkTime, int currentEval) {
+    
+    // Set the time limit for this move
+    BOT_TIME_LIMIT_SECONDS = thinkTime;
     
     // Initialize data structures with error checking
     if (!initTranspositionTable()) {
@@ -69,7 +71,7 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
         *startCol = -1;
         *endRow = -1;
         *endCol = -1;
-        freeTranspositionTable(); // Clean up before returning
+        freeTranspositionTable();
         return;
     }
     
@@ -79,20 +81,34 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
     int depthReached = 0;
     
     clock_t startTime = clock();
+    clock_t lastDepthStartTime = startTime;
+    double lastDepthDuration = 0.0;
     
     printf("\n=== Bot Thinking ===\n");
-    printf("Time limit: %.1f seconds\n", BOT_TIME_LIMIT_SECONDS);
+    printf("Allocated time: %.1f seconds\n", thinkTime);
+    printf("Position eval: %d\n", currentEval);
     
     // Iterative deepening: search depth 1, then 2, then 3, etc.
     for (int currentDepth = 1; currentDepth <= 50; currentDepth++) {
         double elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
         
         // Stop if we're running out of time
-        if (elapsed >= BOT_TIME_LIMIT_SECONDS * 0.95) {
+        if (elapsed >= thinkTime * 0.95) {
             printf("Time limit approaching, stopping at depth %d\n", currentDepth - 1);
             break;
         }
         
+        // SMART ABORT: If last depth took more than half our remaining time, don't start next depth
+        if (currentDepth > 2) {
+            double timeRemaining = thinkTime - elapsed;
+            if (lastDepthDuration > timeRemaining * 0.5) {
+                printf("Last depth took %.2fs, only %.2fs remaining - not starting depth %d\n",
+                       lastDepthDuration, timeRemaining, currentDepth);
+                break;
+            }
+        }
+        
+        lastDepthStartTime = clock();
         int depthNodesEvaluated = 0;
         int depthBestScore = whiteToMove ? INITIAL_ALPHA : INITIAL_BETA;
         Move depthBestMove = moves[0];
@@ -106,6 +122,7 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
         sortMoves(board, moves, numMoves, hashMove, 0);
         
         // Search all moves at current depth
+        int completedDepth = 1;
         for (int i = 0; i < numMoves; i++) {
             char savedStart, savedEnd, savedCaptured;
             int wasEnPassant;
@@ -130,36 +147,44 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
             
             // Check if we ran out of time
             elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
-            if (elapsed >= BOT_TIME_LIMIT_SECONDS) {
-                printf("Time expired during depth %d search\n", currentDepth);
+            if (elapsed >= thinkTime) {
+                printf("Time expired during depth %d search (after move %d/%d)\n", 
+                       currentDepth, i + 1, numMoves);
+                completedDepth = 0;
                 goto time_expired;
             }
         }
         
         // Successfully completed this depth
-        bestMove = depthBestMove;
-        bestScore = depthBestScore;
-        totalNodesEvaluated += depthNodesEvaluated;
-        depthReached = currentDepth;
-        
-        elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
-        printf("Depth %2d: score=%6d, nodes=%8d, time=%.2fs\n", 
-               currentDepth, depthBestScore, depthNodesEvaluated, elapsed);
-        
-        // Early exit if we found a forced mate
-        if (whiteToMove && depthBestScore > MATE_SCORE_THRESHOLD) {
-            printf("Found winning line, stopping search\n");
-            break;
-        }
-        if (!whiteToMove && depthBestScore < -MATE_SCORE_THRESHOLD) {
-            printf("Found winning line, stopping search\n");
-            break;
+        if (completedDepth) {
+            bestMove = depthBestMove;
+            bestScore = depthBestScore;
+            totalNodesEvaluated += depthNodesEvaluated;
+            depthReached = currentDepth;
+            
+            lastDepthDuration = (double)(clock() - lastDepthStartTime) / CLOCKS_PER_SEC;
+            elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
+            
+            printf("Depth %2d: score=%6d, nodes=%8d, time=%.2fs (depth: %.2fs)\n", 
+                   currentDepth, depthBestScore, depthNodesEvaluated, elapsed, lastDepthDuration);
+            
+            // Early exit if we found a forced mate
+            if (whiteToMove && depthBestScore > MATE_SCORE_THRESHOLD) {
+                printf("Found winning line, stopping search\n");
+                break;
+            }
+            if (!whiteToMove && depthBestScore < -MATE_SCORE_THRESHOLD) {
+                printf("Found winning line, stopping search\n");
+                break;
+            }
         }
     }
+
+    double totalTime;
     
-time_expired:
+    time_expired:
     
-    double totalTime = (double)(clock() - startTime) / CLOCKS_PER_SEC;
+    totalTime = (double)(clock() - startTime) / CLOCKS_PER_SEC;
     
     printf("\n=== Search Complete ===\n");
     printf("Maximum depth reached: %d\n", depthReached);
