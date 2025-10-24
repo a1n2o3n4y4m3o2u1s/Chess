@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
+#include <stdlib.h>
 
 void initTimeControl(TimeControl* tc, double baseMinutes, double incrementSeconds) {
     double baseSeconds = baseMinutes * 60.0;

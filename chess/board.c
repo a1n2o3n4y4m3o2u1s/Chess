@@ -4,6 +4,8 @@
 
 #define COLOR_WHITE_SQ "\x1b[48;5;255m"  // White squares
 #define COLOR_BLACK_SQ  "\x1b[48;5;0m"   // Black squares
+#define COLOR_HIGHLIGHT_START "\x1b[48;5;230m"  // Slightly yellower white for starting square
+#define COLOR_HIGHLIGHT_END "\x1b[48;5;58m"     // Slightly yellower black for ending square
 #define COLOR_RESET "\x1b[0m"
 
 // Function declarations
@@ -56,7 +58,7 @@ void initializeBoard(char board[8][8]) {
     }
 }
 
-void printBoard(char board[8][8]) {
+void printBoard(char board[8][8], int lastStartRow, int lastStartCol, int lastEndRow, int lastEndCol) {
     const int cell_width = 5;
     const int cell_height = 3;
     const int center_offset = (cell_width + 1) / 2;
@@ -81,6 +83,13 @@ void printBoard(char board[8][8]) {
                 int is_white_square = ((row + col) % 2 == 0);
                 const char* sym = getPieceSymbol(piece, is_white_square);
                 const char* bg_color = is_white_square ? COLOR_WHITE_SQ : COLOR_BLACK_SQ;
+
+                // Override background for highlighted squares
+                if (row == lastStartRow && col == lastStartCol) {
+                    bg_color = COLOR_HIGHLIGHT_START;
+                } else if (row == lastEndRow && col == lastEndCol) {
+                    bg_color = COLOR_HIGHLIGHT_END;
+                }
 
                 printf("%s", bg_color);
 

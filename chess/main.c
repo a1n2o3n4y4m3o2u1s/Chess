@@ -313,9 +313,14 @@ int main() {
     int gameMode = selectGameMode();
     
     setupTimeControl(&timeControl, &botSettings);
+
+    int lastStartRow = -1;
+    int lastStartCol = -1;
+    int lastEndRow = -1;
+    int lastEndCol = -1;
     
     while (1) {
-        printBoard(board);
+        printBoard(board, lastStartRow, lastStartCol, lastEndRow, lastEndCol);
         
         // Display time if enabled
         if (timeControl.enabled) {
@@ -382,6 +387,11 @@ int main() {
             // End timing and update time remaining
             endMoveTimer(&timeControl, whiteToMove, moveStart);
             
+            lastStartRow = startRow;
+            lastStartCol = startCol;
+            lastEndRow = endRow;
+            lastEndCol = endCol;
+            
             whiteToMove = !whiteToMove;
             
         } else {
@@ -413,7 +423,11 @@ int main() {
             }
             
             executeMove(board, &state, startRow, startCol, endRow, endCol, 0);
-        
+            
+            lastStartRow = startRow;
+            lastStartCol = startCol;
+            lastEndRow = endRow;
+            lastEndCol = endCol;
             
             whiteToMove = !whiteToMove;
         }

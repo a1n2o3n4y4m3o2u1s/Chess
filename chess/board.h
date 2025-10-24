@@ -5,7 +5,7 @@
 // Uppercase letters = white pieces, lowercase = black pieces, '.' = empty
 
 void initializeBoard(char board[8][8]);
-void printBoard(char board[8][8]);
+void printBoard(char board[8][8], int lastStartRow, int lastStartCol, int lastEndRow, int lastEndCol);
 int isWhitePiece(char piece);
 int isBlackPiece(char piece);
 int isEmpty(char piece);
