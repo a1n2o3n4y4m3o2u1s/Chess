@@ -3,8 +3,8 @@
 #include "transposition.h"
 #include "evaluation.h"
 #include "moveOrdering.h"
-#include <moves.h>  // Keep as < > if it's outside bot/, otherwise "moves.h"
-#include <board.h>  // Keep as < > if it's outside bot/, otherwise "board.h"
+#include <moves.h>
+#include <board.h>
 #include <ctype.h>
 #include <stdlib.h>
 
@@ -150,22 +150,32 @@ void updateEnPassant(GameState* state, Move* move, char piece) {
 }
 
 // ============================================================================
-// QUIESCENCE SEARCH (UPDATED FOR PROMOTION)
+// QUIESCENCE SEARCH (UPDATED FOR CHECKMATE)
 // ============================================================================
 
 // Search only captures to avoid horizon effect
 int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int alpha, int beta, 
-                     int maximizing, int* nodesEvaluated, clock_t startTime) {
+                     int maximizing, int* nodesEvaluated, clock_t startTime, int ply) {
     (*nodesEvaluated)++;
     
     // Check time limit
     double elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
     if (elapsed >= BOT_TIME_LIMIT_SECONDS) {
-        return evaluatePosition(board);
+        return evaluatePosition(board, state);
+    }
+    
+    // Check for checkmate/stalemate at leaf nodes - FIXED MATE SCORES
+    if (!hasAnyLegalMoves(board, maximizing, state)) {
+        if (isKingInCheck(board, maximizing, state)) {
+            // Checkmate found - prioritize closer mates
+            return (maximizing ? -MATE_SCORE + ply : MATE_SCORE - ply);
+        } else {
+            return 0; // Stalemate
+        }
     }
     
     // Stand pat - current position evaluation
-    int standPat = evaluatePosition(board);
+    int standPat = evaluatePosition(board, state);
     
     if (maximizing) {
         if (standPat >= beta) return beta;
@@ -213,7 +223,7 @@ int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* stat
         updateEnPassant(state, &captures[i], savedStart);
         
         int score = quiescenceSearch(board, state, alpha, beta, !maximizing, 
-                                    nodesEvaluated, startTime);
+                                    nodesEvaluated, startTime, ply + 1);
         
         unmakeMove(board, &captures[i], savedStart, savedEnd, savedCaptured, wasEnPassant, state);
         *state = savedState;
@@ -231,7 +241,7 @@ int quiescenceSearch(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* stat
 }
 
 // ============================================================================
-// MINIMAX WITH ALPHA-BETA PRUNING + OPTIMIZATIONS (UPDATED)
+// MINIMAX WITH ALPHA-BETA PRUNING + OPTIMIZATIONS (UPDATED FOR CHECKMATE)
 // ============================================================================
 
 int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int depth, int alpha, int beta, 
@@ -243,7 +253,17 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
     if ((*nodesEvaluated) % NODES_BETWEEN_TIME_CHECKS == 0) {
         double elapsed = (double)(clock() - startTime) / CLOCKS_PER_SEC;
         if (elapsed >= BOT_TIME_LIMIT_SECONDS) {
-            return evaluatePosition(board);
+            return evaluatePosition(board, state);
+        }
+    }
+    
+    // Check for checkmate/stalemate - FIXED MATE SCORES
+    if (!hasAnyLegalMoves(board, maximizing, state)) {
+        if (isKingInCheck(board, maximizing, state)) {
+            // Checkmate found - prioritize closer mates
+            return (maximizing ? -MATE_SCORE + ply : MATE_SCORE - ply);
+        } else {
+            return 0; // Stalemate
         }
     }
     
@@ -265,12 +285,7 @@ int minimax(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state, int de
     // Base case: reached depth limit, switch to quiescence search
     if (depth == 0) {
         return quiescenceSearch(board, state, alpha, beta, maximizing, 
-                               nodesEvaluated, startTime);
-    }
-    
-    // Check for game over
-    if (!hasAnyLegalMoves(board, maximizing, state)) {
-        return evaluatePosition(board);
+                               nodesEvaluated, startTime, ply);
     }
     
     Move moves[MAX_MOVES];

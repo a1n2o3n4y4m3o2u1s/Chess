@@ -84,11 +84,11 @@ void printBoard(char board[8][8], int lastStartRow, int lastStartCol, int lastEn
                 const char* sym = getPieceSymbol(piece, is_white_square);
                 const char* bg_color = is_white_square ? COLOR_WHITE_SQ : COLOR_BLACK_SQ;
 
-                // Override background for highlighted squares
+                // Override background for highlighted squares - check square color first
                 if (row == lastStartRow && col == lastStartCol) {
-                    bg_color = COLOR_HIGHLIGHT_START;
+                    bg_color = is_white_square ? COLOR_HIGHLIGHT_START : COLOR_HIGHLIGHT_END;
                 } else if (row == lastEndRow && col == lastEndCol) {
-                    bg_color = COLOR_HIGHLIGHT_END;
+                    bg_color = is_white_square ? COLOR_HIGHLIGHT_START : COLOR_HIGHLIGHT_END;
                 }
 
                 printf("%s", bg_color);

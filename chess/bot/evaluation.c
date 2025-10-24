@@ -1,15 +1,29 @@
 #include <evaluation.h>
 #include <ctype.h>
-#include <stdlib.h>  // For abs
+#include <stdlib.h>
 #include <board.h> 
+#include <gameState.h>
+#include <bot.h>
 
-int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
+int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], GameState* state) {
+    // Check for checkmate first
+    if (!hasAnyLegalMoves(board, 1, state)) {
+        if (isKingInCheck(board, 1, state)) {
+            return -MATE_SCORE;  // Black wins
+        }
+    }
+    if (!hasAnyLegalMoves(board, 0, state)) {
+        if (isKingInCheck(board, 0, state)) {
+            return MATE_SCORE;   // White wins
+        }
+    }
+    
     int mg_score = 0;
     int eg_score = 0;
     
-    // Material values (centipawns, from PeSTO)
-    static const int mg_values[6] = {82, 337, 365, 477, 1025, 20000};  // P, N, B, R, Q, K (keep K high for safety)
-    static const int eg_values[6] = {94, 281, 297, 512, 936, 20000};
+    // Material values (centipawns, from PeSTO) - REDUCED KING VALUE
+    static const int mg_values[6] = {82, 337, 365, 477, 1025, 1000};  // P, N, B, R, Q, K (reduced from 20000)
+    static const int eg_values[6] = {94, 281, 297, 512, 936, 1000};
     
     // Phase increments (P=0, N=1, B=1, R=2, Q=4, K=0)
     static const int phase_inc[6] = {0, 1, 1, 2, 4, 0};
@@ -41,7 +55,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         { -29,   4, -82, -37, -25, -42,   7,  -8},
         { -26,  16, -18, -13,  30,  59,  18, -47},
         { -16,  37,  43,  40,  35,  50,  37,  -2},
-        {  -4,   5,  19,  50,  37,  37,   7,  -2},
+        {  -4,   5,  19,  50,  37,  37,  7,  -2},
         {  -6,  13,  13,  26,  34,  12,  10,   4},
         {   0,  15,  15,  15,  14,  27,  18,  10},
         {   4,  15,  16,   0,   7,  21,  33,   1},
@@ -98,7 +112,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         { -25,  -8, -25,  -2,  -9, -25, -24, -52},
         { -24, -20,  10,   9,  -1,  -9, -19, -41},
         { -17,   3,  22,  22,  22,  11,   8, -18},
-        { -18,  -6,  16,  25,  16,  17,   4, -18},
+        { -18,  -6,  16,  25,  16,  17,  4, -18},
         { -23,  -3,  -1,  15,  10,  -3, -20, -22},
         { -42, -20, -10,  -5,  -2, -20, -23, -44},
         { -29, -51, -23, -15, -22, -18, -50, -64}
@@ -157,7 +171,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
     int blackPawnsOnFile[8] = {0};
     int whitePawnCounts[8] = {0};
     int blackPawnCounts[8] = {0};
-    int whitePawnRows[8][9];  // Max 8 pawns per file + safety
+    int whitePawnRows[8][9];
     int blackPawnRows[8][9];
     int whiteKingRow = -1, whiteKingCol = -1;
     int blackKingRow = -1, blackKingCol = -1;
@@ -257,7 +271,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
             int tableRow = row;
             
             if (!isWhite) {
-                tableRow = MAX_BOARD_SIZE - 1 - row;  // Flip for black
+                tableRow = MAX_BOARD_SIZE - 1 - row;
             }
             
             switch (pieceType) {
@@ -302,8 +316,9 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
                     if (ownPawns == 0) {
                         mg_pos += 15;
                     }
-                    // Rook on 7th rank bonus
-                    int on7th = isWhite ? (row == 1) : (row == 6);
+                    // Rook on 7th rank bonus - FIXED: Use relative ranks
+                    int rank = isWhite ? row : MAX_BOARD_SIZE - 1 - row;
+                    int on7th = (rank == 1); // 7th rank relative to the side
                     if (on7th) {
                         mg_pos += 20;
                     }
@@ -328,7 +343,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         }
     }
     
-    // Pawn structure evaluation (applied to both phases)
+    // Pawn structure evaluation
     for (int col = 0; col < MAX_BOARD_SIZE; col++) {
         // Doubled pawn penalty
         if (whitePawnsOnFile[col] > 1) {
@@ -360,7 +375,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         }
     }
     
-    // Bishop pair bonuses (applied to both phases)
+    // Bishop pair bonuses
     if (whiteBishopCount >= 2) {
         mg_score += 50;
         eg_score += 50;
@@ -370,7 +385,7 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         eg_score -= 50;
     }
     
-    // Center control bonus (applied to midgame)
+    // Center control bonus
     for (int row = 3; row <= 4; row++) {
         for (int col = 3; col <= 4; col++) {
             char piece = board[row][col];
@@ -381,14 +396,16 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
         }
     }
     
-    // King safety (pawn shield, midgame only)
+    // SYMMETRIC AND FAST King safety evaluation
     int whiteSafety = 0;
     if (whiteKingRow != -1) {
-        int min_c = (0 > whiteKingCol - 1) ? 0 : whiteKingCol - 1;
-        int max_c = (7 < whiteKingCol + 1) ? 7 : whiteKingCol + 1;
-        for (int c = min_c; c <= max_c; c++) {
-            for (int r = (0 > whiteKingRow - 3) ? 0 : whiteKingRow - 3; r < whiteKingRow; r++) {
-                if (board[r][c] == 'P') whiteSafety += 10;
+        // Check the 3 squares in front of the white king
+        int frontRow = whiteKingRow - 1;
+        if (frontRow >= 0) {
+            for (int col = whiteKingCol - 1; col <= whiteKingCol + 1; col++) {
+                if (col >= 0 && col < MAX_BOARD_SIZE) {
+                    if (board[frontRow][col] == 'P') whiteSafety += 10;
+                }
             }
         }
     }
@@ -396,11 +413,13 @@ int evaluatePosition(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE]) {
     
     int blackSafety = 0;
     if (blackKingRow != -1) {
-        int min_c = (0 > blackKingCol - 1) ? 0 : blackKingCol - 1;
-        int max_c = (7 < blackKingCol + 1) ? 7 : blackKingCol + 1;
-        for (int c = min_c; c <= max_c; c++) {
-            for (int r = blackKingRow + 1; r < (8 < blackKingRow + 4 ? 8 : blackKingRow + 4); r++) {
-                if (board[r][c] == 'p') blackSafety += 10;
+        // Check the 3 squares in front of the black king
+        int frontRow = blackKingRow + 1;
+        if (frontRow < MAX_BOARD_SIZE) {
+            for (int col = blackKingCol - 1; col <= blackKingCol + 1; col++) {
+                if (col >= 0 && col < MAX_BOARD_SIZE) {
+                    if (board[frontRow][col] == 'p') blackSafety += 10;
+                }
             }
         }
     }

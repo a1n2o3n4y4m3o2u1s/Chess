@@ -33,6 +33,7 @@ void displayTime(TimeControl* tc);
 
 // Calculate how much time the bot should use for this move
 // Considers: time remaining, increment, position evaluation, move number
+// Enhanced competitive version with phase-aware allocation and safety margins
 double calculateBotThinkTime(TimeControl* tc, int whiteToMove, int positionEval, int moveNumber);
 
 // Format seconds into MM:SS.d format

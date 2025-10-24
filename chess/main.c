@@ -364,7 +364,8 @@ int main() {
             clock_t moveStart = startMoveTimer();
             
             // Calculate position evaluation
-            int currentEval = evaluatePosition(board);
+            // Calculate position evaluation
+            int currentEval = evaluatePosition(board, &state);
             
             // Calculate how much time bot should use
             double thinkTime = calculateBotThinkTime(&timeControl, whiteToMove, 

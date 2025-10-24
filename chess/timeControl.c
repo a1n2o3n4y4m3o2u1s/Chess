@@ -62,60 +62,105 @@ void displayTime(TimeControl* tc) {
 
 double calculateBotThinkTime(TimeControl* tc, int whiteToMove, int positionEval, int moveNumber) {
     if (!tc->enabled) {
-        // No time control - use default
-        return 1;
+        return 0.2; // Default thinking time when no time control
     }
     
     double timeRemaining = whiteToMove ? tc->whiteTimeRemaining : tc->blackTimeRemaining;
     
-    // Emergency time - use increment only
-    if (timeRemaining < tc->increment * 2) {
-        return fmin(tc->increment * 0.8, timeRemaining * 0.5);
+    // Safety margin - always keep at least 2 increments as emergency reserve
+    double safetyMargin = tc->increment * 2.0;
+    double usableTime = timeRemaining - safetyMargin;
+    
+    // If we're in serious time trouble, use only safe portion of increment
+    if (usableTime <= 0) {
+        return fmin(tc->increment * 0.7, timeRemaining * 0.3);
     }
     
-    // Estimate remaining moves in game (simple heuristic)
-    int estimatedMovesRemaining = 40;
-    if (moveNumber > 20) {
-        estimatedMovesRemaining = 30;
+    // More sophisticated move phase detection
+    double phaseMultiplier;
+    if (moveNumber < 15) {
+        phaseMultiplier = 1.4; // Opening - think more for development
+    } else if (moveNumber < 30) {
+        phaseMultiplier = 1.2; // Early middlegame
+    } else if (moveNumber < 45) {
+        phaseMultiplier = 1.0; // Middlegame
+    } else {
+        phaseMultiplier = 0.8; // Endgame - can think faster
     }
-    if (moveNumber > 40) {
-        estimatedMovesRemaining = 20;
+    
+    // Estimate remaining moves based on game phase
+    int estimatedMovesRemaining;
+    if (moveNumber < 20) {
+        estimatedMovesRemaining = 50 - moveNumber;
+    } else if (moveNumber < 40) {
+        estimatedMovesRemaining = 60 - moveNumber; // Middlegame can be longer
+    } else {
+        estimatedMovesRemaining = 80 - moveNumber; // Endgames can have many moves
     }
+    estimatedMovesRemaining = fmax(estimatedMovesRemaining, 10); // At least 10 moves
     
-    // Base allocation: divide remaining time by estimated moves
-    double baseTime = timeRemaining / estimatedMovesRemaining;
+    // Base time allocation using non-linear formula (more aggressive early, conservative late)
+    double baseTime = (usableTime / estimatedMovesRemaining) * phaseMultiplier;
     
-    // Add most of the increment (save a bit for safety)
-    baseTime += tc->increment * 0.9;
-    
-    // Position complexity modifier
-    // If position is critical (eval close to 0 or very high), think longer
-    double complexityMultiplier = 1.0;
+    // Position criticality analysis - more nuanced
+    double criticalityMultiplier = 1.0;
     int absEval = abs(positionEval);
     
-    if (absEval < 100) {
-        // Very equal position - think more
-        complexityMultiplier = 1.3;
+    if (absEval < 50) {
+        // Highly critical position - nearly equal
+        criticalityMultiplier = 1.6;
+    } else if (absEval < 150) {
+        // Moderately critical
+        criticalityMultiplier = 1.3;
     } else if (absEval < 300) {
-        // Slightly unequal - normal thinking
-        complexityMultiplier = 1.1;
-    } else if (absEval > 500) {
-        // Winning/losing position - can think less
-        complexityMultiplier = 0.8;
+        // Slight advantage
+        criticalityMultiplier = 1.1;
+    } else if (absEval > 600) {
+        // Clear advantage - think less unless near winning blow
+        criticalityMultiplier = 0.6;
+    } else if (absEval > 1000) {
+        // Winning position - minimal thinking
+        criticalityMultiplier = 0.4;
     }
     
-    baseTime *= complexityMultiplier;
+    baseTime *= criticalityMultiplier;
     
-    // Never use more than 1/10 of remaining time (safety)
-    double maxTime = timeRemaining * 0.10;
+    // Add increment with phase-dependent usage
+    double incrementUsage;
+    if (moveNumber < 10) {
+        incrementUsage = 0.3; // Use less increment in opening
+    } else if (timeRemaining > tc->increment * 10) {
+        incrementUsage = 0.9; // Healthy time - use most of increment
+    } else {
+        incrementUsage = 0.5; // Moderate time - use half increment
+    }
+    baseTime += tc->increment * incrementUsage;
+    
+    // Dynamic time bounds based on game phase and time situation
+    double maxTime;
+    if (moveNumber < 10) {
+        maxTime = timeRemaining * 0.15; // Can use more in opening
+    } else if (timeRemaining > 180) { // More than 3 minutes
+        maxTime = timeRemaining * 0.12;
+    } else if (timeRemaining > 60) { // More than 1 minute
+        maxTime = timeRemaining * 0.10;
+    } else {
+        maxTime = timeRemaining * 0.08; // Less when time is short
+    }
+    
+    double minTime = fmax(tc->increment * 0.4, 0.5); // At least half increment or 0.5s
+    
+    // Apply bounds
     baseTime = fmin(baseTime, maxTime);
-    
-    // Never use less than half the increment (always make progress)
-    double minTime = tc->increment * 0.5;
     baseTime = fmax(baseTime, minTime);
     
-    // Absolute minimum to avoid instant moves
-    baseTime = fmax(baseTime, 0.5);
+    // Sudden death protection - never drop below safe threshold
+    if (tc->increment == 0 && timeRemaining < 30) {
+        baseTime = fmin(baseTime, timeRemaining * 0.2);
+    }
+    
+    // Ensure we don't exceed remaining time (safety)
+    baseTime = fmin(baseTime, timeRemaining * 0.95);
     
     return baseTime;
 }
