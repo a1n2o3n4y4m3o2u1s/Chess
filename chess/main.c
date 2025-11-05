@@ -3,12 +3,12 @@
 #include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
-#include <board.h>
-#include <moves.h>
-#include <gameState.h>
-#include <bot.h>
+#include "board.h"
+#include "moves.h"
+#include "gameState.h"
+#include "bot/bot.h"  // INCLUDE BOT.H FROM THE BOT SUBDIRECTORY
 #include "timeControl.h"
-#include <evaluation.h>
+#include "evaluation.h"
 
 // ============================================================================
 // GAME MODES
@@ -192,6 +192,14 @@ static void setupTimeControl(TimeControl* tc, BotSettings* botSettings) {
         printf("Time control: %.0f+%.0f\n", minutes, increment);
     } else {
         printf("No time control (unlimited time)\n");
+        // ADDED: Ask for default bot thinking time when no time control
+        printf("Enter default bot thinking time in seconds: ");
+        if (scanf("%lf", &botSettings->defaultThinkTime) != 1 || botSettings->defaultThinkTime <= 0) {
+            botSettings->defaultThinkTime = 5.0; // Fallback to 5 seconds
+            printf("Using default thinking time: %.1f seconds\n", botSettings->defaultThinkTime);
+        } else {
+            printf("Default bot thinking time set to: %.1f seconds\n", botSettings->defaultThinkTime);
+        }
     }
     
     // Ask about bot automation
@@ -312,6 +320,10 @@ int main() {
     int whiteToMove = 1;
     int gameMode = selectGameMode();
     
+    // ADDED: Initialize defaultThinkTime with a reasonable default
+    botSettings.defaultThinkTime = 5.0;
+    botSettings.autoPlay = 0; // Initialize autoPlay
+    
     setupTimeControl(&timeControl, &botSettings);
 
     int lastStartRow = -1;
@@ -364,12 +376,16 @@ int main() {
             clock_t moveStart = startMoveTimer();
             
             // Calculate position evaluation
-            // Calculate position evaluation
             int currentEval = evaluatePosition(board, &state);
             
-            // Calculate how much time bot should use
-            double thinkTime = calculateBotThinkTime(&timeControl, whiteToMove, 
-                                                     currentEval, state.moveNumber);
+            // MODIFIED: Use configured default think time when no time control
+            double thinkTime;
+            if (timeControl.enabled) {
+                thinkTime = calculateBotThinkTime(&timeControl, whiteToMove, 
+                                                 currentEval, state.moveNumber);
+            } else {
+                thinkTime = botSettings.defaultThinkTime;
+            }
             
             selectBotMove(board, whiteToMove, &startRow, &startCol, &endRow, &endCol, 
                          &state, thinkTime, currentEval);

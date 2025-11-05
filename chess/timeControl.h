@@ -2,6 +2,7 @@
 #define TIME_CONTROL_H
 
 #include <time.h>
+#include "bot/bot.h"  // ADD THIS to get BotSettings from bot.h
 
 // Time control configuration
 typedef struct {
@@ -11,10 +12,7 @@ typedef struct {
     int enabled;                  // 0 = no time control, 1 = time control enabled
 } TimeControl;
 
-// Bot automation settings
-typedef struct {
-    int autoPlay;                 // 0 = manual (requires 'next'), 1 = automatic
-} BotSettings;
+// REMOVE the BotSettings definition from here - it's now in bot/bot.h
 
 // Initialize time control with base time and increment
 void initTimeControl(TimeControl* tc, double baseMinutes, double incrementSeconds);

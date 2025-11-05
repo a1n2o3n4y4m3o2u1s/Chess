@@ -1,17 +1,17 @@
 #include <stdio.h>
 #include <ctype.h>
-#include <bot.h>
-#include <board.h>
-#include <moves.h>
+#include "bot.h"
+#include "../board.h"
+#include "../moves.h"
 #include <stdlib.h>
-#include <gameState.h>
+#include "../gameState.h"
 #include <time.h>
 #include <string.h>
 
-#include <transposition.h>
-#include <evaluation.h>
-#include <moveOrdering.h>
-#include <search.h>
+#include "transposition.h"
+#include "evaluation.h"
+#include "moveOrdering.h"
+#include "search.h"
 
 // ============================================================================
 // CONFIGURATION
@@ -144,8 +144,7 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
         makeMove(board, &moves[i], &savedStart, &savedEnd, &savedCaptured, &wasEnPassant, state);
         
         // Check if this move gives immediate mate
-        if (!hasAnyLegalMoves(board, !whiteToMove, state) && 
-            isKingInCheck(board, !whiteToMove, state)) {
+        if (!hasAnyLegalMoves(board, !whiteToMove, state)) {
             printf("*** FORCED MATE FOUND! Playing mating move immediately ***\n");
             
             *startRow = moves[i].startRow;
@@ -344,7 +343,9 @@ void selectBotMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], int whiteToMove, 
     freeTranspositionTable();
 }
 
+// CHANGED: Remove the hardcoded 5.0 seconds - let main.c handle the default
 void getBotMove(char board[8][8], int whiteToMove, int* startRow, int* startCol, 
                 int* endRow, int* endCol, GameState* state) {
-    selectBotMove(board, whiteToMove, startRow, startCol, endRow, endCol, state, 5.0, 0);
+    // Use a reasonable fallback, but main.c should provide the configured value
+    selectBotMove(board, whiteToMove, startRow, startCol, endRow, endCol, state, 2.0, 0);
 }

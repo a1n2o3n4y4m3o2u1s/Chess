@@ -1,16 +1,18 @@
 #ifndef BOT_H
 #define BOT_H
 
-#include <gameState.h>
+#include "gameState.h"
 
-extern double BOT_TIME_LIMIT_SECONDS;
+typedef struct {
+    int autoPlay;
+    double defaultThinkTime;  // Default thinking time when no time control
+} BotSettings;
 
-// Bot selects best move using minimax with alpha-beta pruning
-// Now accepts allocated think time and position evaluation
+// Function declarations
 void selectBotMove(char board[8][8], int whiteToMove, int* startRow, int* startCol, 
                    int* endRow, int* endCol, GameState* state, double thinkTime, int currentEval);
-
-// Configure bot search depth (kept for backward compatibility)
+void getBotMove(char board[8][8], int whiteToMove, int* startRow, int* startCol, 
+                int* endRow, int* endCol, GameState* state);
 void setBotDepth(int depth);
 
 #endif

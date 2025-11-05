@@ -8,6 +8,8 @@
 #include <ctype.h>
 #include <stdlib.h>
 
+extern double BOT_TIME_LIMIT_SECONDS;
+
 void makeMove(char board[MAX_BOARD_SIZE][MAX_BOARD_SIZE], Move* move, char* savedStart, char* savedEnd, 
               char* savedCaptured, int* wasEnPassant, GameState* state) {
     *savedStart = board[move->startRow][move->startCol];
