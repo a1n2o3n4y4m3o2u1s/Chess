@@ -4,7 +4,7 @@ A sophisticated chess implementation featuring an advanced AI bot with iterative
 
 ## Features
 
-• **Advanced AI Bot** with iterative deepening alpha-beta search  
+• **Advanced Bot** with iterative deepening alpha-beta search  
 • **Multiple Game Modes**: Player vs Player, Player vs Bot, Bot vs Bot  
 • **Competitive Time Control** with increment and dynamic thinking time  
 • **Transposition Tables** for efficient move caching and pruning  
@@ -62,7 +62,6 @@ chess/
 
 - **auto**: Bot moves automatically
 - **manual**: Type 'next' to advance bot moves
-- **time**: Display remaining time
 - **quit**: Exit the game
 
 ## Move Input Format
@@ -85,38 +84,8 @@ Use algebraic notation: `e2e4` (from e2 to e4)
 - **Quiescence Search** to avoid horizon effect
 - **Principal Variation Search** for better move ordering
 
-## Example Game Session
-
-```
-=== Time Control Setup ===
-Enter base time in minutes (0 for no time control): 0
-No time control (unlimited time)
-Enter default bot thinking time in seconds: 3.0
-
-Bot play mode:
-  'auto' - Bot moves automatically
-  'manual' - Type 'next' to advance bot moves
-Select mode: auto
-
-=== Bot Thinking ===
-Allocated time: 3.0 seconds
-Position eval: 25
-Legal moves: 20
-Depth 1: score=   35, nodes=    45, time=0.02s
-Depth 2: score=   28, nodes=   892, time=0.15s
-Depth 3: score=   31, nodes=  4521, time=0.87s
-```
-
-## Configuration
-
-- Adjust `BOT_TIME_LIMIT_SECONDS` in `bot.c` for default thinking time
-- Modify evaluation weights in `evaluation.c` for different playing styles
-- Tune search parameters in `search.c` for strength/speed balance
-
 ## Technical Details
 
-- **Search Depth**: Typically reaches 4-8 ply in middlegame positions
-- **Nodes per Second**: 5,000-50,000 depending on position complexity
 - **Transposition Table**: Default 16MB hash table
 - **Move Generation**: Legal move generation with full chess rules
 
@@ -125,11 +94,6 @@ Depth 3: score=   31, nodes=  4521, time=0.87s
 **Build**:
 ```bash
 make clean && make
-```
-
-**Run Tests**:
-```bash
-make test
 ```
 
 **Debug Build**:
